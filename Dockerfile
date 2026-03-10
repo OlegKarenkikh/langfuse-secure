@@ -7,7 +7,7 @@
 #                            • pnpm install патч-версий пакетов
 # Stage 3 (patcher-rsync) — alpine:3.21 (только для rsync --copy-links)
 #                            • rsync разворачивает симлинки pnpm store
-#                            • удаляет esbuild-бинарь
+#                            • удаляет esbuild + tsgo бинари
 # Stage 4 (runtime)       — cgr.dev/chainguard/node:latest (0 CVE, distroless)
 # =================================================================
 
@@ -31,7 +31,7 @@ RUN set -e; \
     PNPM=/tmp/pnpm-bin/node_modules/.bin/pnpm; \
     PATCHDIR=/tmp/pnpm-patch; \
     mkdir -p "$PATCHDIR" && cd "$PATCHDIR"; \
-    printf '%s' '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.6","rollup":"4.59.0","minimatch":"9.0.7","tar":"7.5.11","serialize-javascript":"7.0.3","@hono/node-server":"1.19.10","dompurify":"3.2.5","ajv":"8.17.1","webpack":"5.99.0","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.8.4","cross-spawn":"7.0.6","basic-ftp":"5.0.5"}}' > package.json; \
+    printf '%s' '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.6","rollup":"4.59.0","minimatch":"9.0.7","tar":"7.5.11","serialize-javascript":"7.0.3","@hono/node-server":"1.19.10","dompurify":"3.2.5","ajv":"8.17.1","webpack":"5.99.0","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.13.5","cross-spawn":"7.0.6","basic-ftp":"5.2.0"}}' > package.json; \
     $PNPM install --no-lockfile --ignore-scripts --shamefully-hoist 2>/dev/null; \
     echo "pnpm install done"
 
@@ -68,10 +68,11 @@ RUN set -e; \
     patch_pkg "@hono/node-server"; \
     rm -rf "$PATCHDIR"
 
-# Удаляем esbuild-бинарь (golang CVE)
+# Удаляем esbuild-бинарь (golang CVE) и tsgo (CVE-2025-68121)
 RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
     find /app -path "*/esbuild/bin/esbuild" -delete 2>/dev/null; \
     find /app -name "esbuild" -type f -perm /111 -delete 2>/dev/null; \
+    find /app -name "tsgo" -type f -perm /111 -delete 2>/dev/null; \
     true
 
 # ---------- stage 4: runtime ----------
