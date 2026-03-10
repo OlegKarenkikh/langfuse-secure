@@ -5,8 +5,8 @@
 # Stage 1 (source)  — официальный langfuse/langfuse:3
 # Stage 2 (patcher) — cgr.dev/chainguard/node:latest-dev
 #                      • устанавливаем pnpm
-#                      • принудительно апгрейдим уязвимые транзитивные
-#                        зависимости через прямую замену в pnpm store
+#                      • апгрейдим уязвимые транзитивные зависимости
+#                        через прямую замену в pnpm store
 #                      • удаляем esbuild-бинарник (golang stdlib CVEs)
 # Stage 3 (runtime) — cgr.dev/chainguard/node:latest
 #                      • 0 CVE OS-слой, non-root, нет shell
@@ -21,34 +21,16 @@ FROM cgr.dev/chainguard/node:latest-dev AS patcher
 WORKDIR /app
 COPY --from=source /app /app
 
-# Устанавливаем pnpm (совпадает с менеджером пакетов langfuse)
+# Устанавливаем pnpm
 RUN npm install -g pnpm@latest --no-update-notifier 2>/dev/null
 
 # Скачиваем fix-версии во временный каталог,
-# затем перезаписываем каждое вхождение пакета в /app/node_modules/.pnpm
+# затем перезаписываем каждое вхождение уязвимого пакета в /app/node_modules/.pnpm
 RUN set -e && \
     PATCH_DIR=/tmp/pnpm-patch && \
     mkdir -p "$PATCH_DIR" && \
     cd "$PATCH_DIR" && \
-    printf '%s' '{
-  "name": "cve-patcher",
-  "version": "1.0.0",
-  "dependencies": {
-    "fast-xml-parser": "5.3.6",
-    "rollup": "4.59.0",
-    "minimatch": "9.0.7",
-    "tar": "7.5.10",
-    "serialize-javascript": "7.0.3",
-    "@hono/node-server": "1.19.10",
-    "dompurify": "3.2.5",
-    "ajv": "8.17.1",
-    "webpack": "5.99.0",
-    "qs": "6.14.2",
-    "brace-expansion": "2.0.2",
-    "axios": "1.13.5",
-    "cross-spawn": "7.0.5"
-  }
-}' > package.json && \
+    echo '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.6","rollup":"4.59.0","minimatch":"9.0.7","tar":"7.5.10","serialize-javascript":"7.0.3","@hono/node-server":"1.19.10","dompurify":"3.2.5","ajv":"8.17.1","webpack":"5.99.0","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.13.5","cross-spawn":"7.0.5"}}' > package.json && \
     pnpm install --no-lockfile --ignore-scripts 2>/dev/null && \
     for PKG_ESCAPED in \
         "fast-xml-parser@" \
@@ -72,8 +54,7 @@ RUN set -e && \
         while read -r PNPM_DIR; do \
             TARGET="$PNPM_DIR/node_modules/$PKG_NAME"; \
             if [ -d "$TARGET" ]; then \
-                cp -rf "$SRC/" "$TARGET/"; \
-                echo "patched: $TARGET"; \
+                cp -rf "$SRC/" "$TARGET/" && echo "patched: $TARGET"; \
             fi; \
         done; \
     done && \
