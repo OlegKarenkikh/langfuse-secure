@@ -27,40 +27,23 @@ RUN chmod -R u+w /app/node_modules 2>/dev/null || true
 # Устанавливаем pnpm
 RUN npm install --prefix /tmp/pnpm-bin pnpm --no-update-notifier 2>/dev/null
 
-# Патчим уязвимые пакеты:
-# Стратегия: скачиваем исправленные версии и делаем cp -rL (разворачиваем symlinks)
-# Это обходит проблему Permission denied при создании symlinks поверх существующих
+# Патчим уязвимые пакеты через pnpm.
+# Используем cp -rL (разворачиваем symlinks) + rm -rf перед копированием,
+# чтобы обойти Permission denied при создании symlinks поверх существующих.
 RUN set -e; \
     PNPM=/tmp/pnpm-bin/node_modules/.bin/pnpm; \
     PATCHDIR=/tmp/pnpm-patch; \
     mkdir -p "$PATCHDIR"; \
     cd "$PATCHDIR"; \
-    echo '{"name":"cve-patcher","version":"1.0.0","dependencies":{
-      "fast-xml-parser":"5.3.6",
-      "rollup":"4.59.0",
-      "minimatch":"9.0.7",
-      "tar":"7.5.10",
-      "serialize-javascript":"7.0.3",
-      "@hono/node-server":"1.19.10",
-      "dompurify":"3.2.5",
-      "ajv":"8.17.1",
-      "webpack":"5.99.0",
-      "qs":"6.14.2",
-      "brace-expansion":"2.0.2",
-      "axios":"1.13.5",
-      "cross-spawn":"7.0.5"
-    }}' > package.json; \
+    printf '%s' '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.6","rollup":"4.59.0","minimatch":"9.0.7","tar":"7.5.10","serialize-javascript":"7.0.3","@hono/node-server":"1.19.10","dompurify":"3.2.5","ajv":"8.17.1","webpack":"5.99.0","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.13.5","cross-spawn":"7.0.5"}}' > package.json; \
     $PNPM install --no-lockfile --ignore-scripts 2>/dev/null; \
-    for PKGESCAPED in fast-xml-parser rollup minimatch tar serialize-javascript '@hono/node-server' dompurify ajv webpack qs brace-expansion axios cross-spawn; do \
-      PKGNAME=$(echo "$PKGESCAPED" | sed 's/@hono/node-server/hono+node-server/g'); \
+    for PKGESCAPED in fast-xml-parser rollup minimatch tar serialize-javascript @hono/node-server dompurify ajv webpack qs brace-expansion axios cross-spawn; do \
       SRC="$PATCHDIR/node_modules/$PKGESCAPED"; \
       [ -d "$SRC" ] || continue; \
       find /app/node_modules/.pnpm -maxdepth 2 -name "$PKGESCAPED" -type d 2>/dev/null | while read -r TARGET; do \
-        if [ -d "$TARGET" ]; then \
-          rm -rf "$TARGET"; \
-          cp -rL "$SRC" "$TARGET"; \
-          echo "patched $TARGET"; \
-        fi; \
+        rm -rf "$TARGET"; \
+        cp -rL "$SRC" "$TARGET"; \
+        echo "patched $TARGET"; \
       done; \
       if [ -d "/app/node_modules/$PKGESCAPED" ]; then \
         rm -rf "/app/node_modules/$PKGESCAPED"; \
