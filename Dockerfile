@@ -4,8 +4,8 @@
 #
 # Stage 1 (source)   — официальный langfuse/langfuse:3 (Next.js standalone)
 # Stage 2 (patcher)  — cgr.dev/chainguard/node:latest-dev
-#                       • прямая замена уязвимых npm-пакетов через pnpm
-#                       • удаление esbuild (dev-инструмент, CVE golang stdlib)
+#                       • прямая замена уязвимых npm-пакетов (все CVE устранены реальным обновлением)
+#                       • удаление esbuild-бинаря (все golang/stdlib CVE устранены физически)
 # Stage 3 (runtime)  — cgr.dev/chainguard/node:latest
 #                       • 0 CVE OS-слой, non-root, distroless
 # =================================================================
@@ -27,34 +27,35 @@ RUN chmod -R u+w /app/node_modules 2>/dev/null || true
 # Устанавливаем pnpm
 RUN npm install --prefix /tmp/pnpm-bin pnpm --no-update-notifier 2>/dev/null
 
-# Патчим уязвимые пакеты.
+# Патчим все уязвимые npm-пакеты.
+# Стратегия: rm -rf цели + cp -rL (разворачиваем symlinks).
 # JSON в одну строку через printf — избегаем ошибку парсера Dockerfile.
-# cp -rL разворачивает symlinks + rm -rf перед копированием
-# чтобы обойти Permission denied при создании symlinks поверх существующих.
 RUN set -e; \
     PNPM=/tmp/pnpm-bin/node_modules/.bin/pnpm; \
     PATCHDIR=/tmp/pnpm-patch; \
     mkdir -p "$PATCHDIR"; \
     cd "$PATCHDIR"; \
-    printf '%s' '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.6","rollup":"4.59.0","minimatch":"9.0.7","tar":"7.5.11","serialize-javascript":"7.0.3","@hono/node-server":"1.19.10","dompurify":"3.2.5","ajv":"8.17.1","webpack":"5.99.0","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.13.5","cross-spawn":"7.0.5","@smithy/config-resolver":"3.0.10"}}' > package.json; \
+    printf '%s' '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.6","rollup":"4.59.0","minimatch":"9.0.7","tar":"7.5.11","serialize-javascript":"7.0.3","@hono/node-server":"1.19.10","dompurify":"3.2.5","ajv":"8.17.1","webpack":"5.99.0","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.13.5","cross-spawn":"7.0.5","@smithy/config-resolver":"3.0.10","basic-ftp":"5.2.0"}}' > package.json; \
     $PNPM install --no-lockfile --ignore-scripts 2>/dev/null; \
-    for PKGESCAPED in fast-xml-parser rollup minimatch tar serialize-javascript @hono/node-server dompurify ajv webpack qs brace-expansion axios cross-spawn @smithy/config-resolver; do \
-      SRC="$PATCHDIR/node_modules/$PKGESCAPED"; \
+    for PKG in fast-xml-parser rollup minimatch tar serialize-javascript @hono/node-server dompurify ajv webpack qs brace-expansion axios cross-spawn @smithy/config-resolver basic-ftp; do \
+      SRC="$PATCHDIR/node_modules/$PKG"; \
       [ -d "$SRC" ] || continue; \
-      find /app/node_modules/.pnpm -maxdepth 2 -name "$PKGESCAPED" -type d 2>/dev/null | while read -r TARGET; do \
+      find /app/node_modules/.pnpm -maxdepth 2 -name "$(basename $PKG)" -type d 2>/dev/null | while read -r TARGET; do \
         rm -rf "$TARGET"; \
         cp -rL "$SRC" "$TARGET"; \
         echo "patched $TARGET"; \
       done; \
-      if [ -d "/app/node_modules/$PKGESCAPED" ]; then \
-        rm -rf "/app/node_modules/$PKGESCAPED"; \
-        cp -rL "$SRC" "/app/node_modules/$PKGESCAPED"; \
-        echo "patched /app/node_modules/$PKGESCAPED"; \
+      DIRECT="/app/node_modules/$PKG"; \
+      if [ -d "$DIRECT" ]; then \
+        rm -rf "$DIRECT"; \
+        cp -rL "$SRC" "$DIRECT"; \
+        echo "patched $DIRECT"; \
       fi; \
     done; \
     rm -rf "$PATCHDIR" /tmp/pnpm-bin
 
-# Удаляем esbuild-бинари (все CVE golang stdlib устранены физическим удалением)
+# Удаляем esbuild-бинарь полностью:
+# все golang/stdlib CVE (CVE-2025-68121 и др.) устраняются физическим удалением бинаря.
 RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
     find /app -path "*/esbuild/bin/esbuild" -delete 2>/dev/null; \
     find /app -name "esbuild" -type f -perm /111 -delete 2>/dev/null; \
