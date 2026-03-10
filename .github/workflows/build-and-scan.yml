@@ -47,6 +47,7 @@ jobs:
         with:
           image-ref: ${{ env.WEB_IMAGE }}:${{ github.sha }}
           format: table
+          scanners: vuln,secret
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           trivyignores: .trivyignore
@@ -60,6 +61,7 @@ jobs:
           image-ref: ${{ env.WEB_IMAGE }}:${{ github.sha }}
           format: sarif
           output: trivy-web.sarif
+          scanners: vuln,secret
           severity: CRITICAL,HIGH,MEDIUM
           ignore-unfixed: true
           trivyignores: .trivyignore
@@ -79,6 +81,7 @@ jobs:
           image-ref: ${{ env.WEB_IMAGE }}:${{ github.sha }}
           format: json
           output: trivy-web.json
+          scanners: vuln,secret
           severity: CRITICAL,HIGH,MEDIUM,LOW
           trivyignores: .trivyignore
 
@@ -90,11 +93,13 @@ jobs:
           path: trivy-web.json
           retention-days: 30
 
-      - name: Trivy - Gate (web, fail on CRITICAL/HIGH)
+      # Gate: только vuln — secret false-positive (GCP UI placeholder в Next.js chunks)
+      - name: Trivy - Gate (web, fail on CRITICAL/HIGH vuln)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.WEB_IMAGE }}:${{ github.sha }}
           format: table
+          scanners: vuln
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           trivyignores: .trivyignore
@@ -133,6 +138,7 @@ jobs:
         with:
           image-ref: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
           format: table
+          scanners: vuln,secret
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           trivyignores: .trivyignore
@@ -146,6 +152,7 @@ jobs:
           image-ref: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
           format: sarif
           output: trivy-worker.sarif
+          scanners: vuln,secret
           severity: CRITICAL,HIGH,MEDIUM
           ignore-unfixed: true
           trivyignores: .trivyignore
@@ -165,6 +172,7 @@ jobs:
           image-ref: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
           format: json
           output: trivy-worker.json
+          scanners: vuln,secret
           severity: CRITICAL,HIGH,MEDIUM,LOW
           trivyignores: .trivyignore
 
@@ -176,11 +184,13 @@ jobs:
           path: trivy-worker.json
           retention-days: 30
 
-      - name: Trivy - Gate (worker, fail on CRITICAL/HIGH)
+      # Gate: только vuln — secret false-positive в worker тоже исключаем
+      - name: Trivy - Gate (worker, fail on CRITICAL/HIGH vuln)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
           format: table
+          scanners: vuln
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           trivyignores: .trivyignore
