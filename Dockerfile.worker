@@ -1,18 +1,91 @@
 # syntax=docker/dockerfile:1
 # =================================================================
 # Langfuse WORKER — secure hardened image
-# Strategy: copy prebuilt artifacts from official langfuse/langfuse-worker:3
-#            into cgr.dev/chainguard/node:latest (0 CVE, no shell,
-#            non-root uid=65532)
+#
+# Stage 1 (source)  — официальный langfuse/langfuse-worker:3
+# Stage 2 (patcher) — cgr.dev/chainguard/node:latest-dev
+#                      • устанавливаем pnpm
+#                      • апгрейдим уязвимые транзитивные зависимости
+#                      • удаляем esbuild-бинарник (golang stdlib CVEs)
+# Stage 3 (runtime) — cgr.dev/chainguard/node:latest
+#                      • 0 CVE OS-слой, non-root, uid=65532
 # =================================================================
+
+# ---------- stage 1: source ----------
 FROM langfuse/langfuse-worker:3 AS source
 
+# ---------- stage 2: patcher ----------
+FROM cgr.dev/chainguard/node:latest-dev AS patcher
+
+WORKDIR /app
+COPY --from=source /app /app
+
+# Устанавливаем pnpm
+RUN npm install -g pnpm@latest --no-update-notifier 2>/dev/null
+
+# Патчим уязвимые транзитивные зависимости
+RUN set -e && \
+    PATCH_DIR=/tmp/pnpm-patch && \
+    mkdir -p "$PATCH_DIR" && \
+    cd "$PATCH_DIR" && \
+    printf '%s' '{
+  "name": "cve-patcher",
+  "version": "1.0.0",
+  "dependencies": {
+    "fast-xml-parser": "5.3.6",
+    "minimatch": "9.0.7",
+    "tar": "7.5.10",
+    "serialize-javascript": "7.0.3",
+    "dompurify": "3.2.5",
+    "ajv": "8.17.1",
+    "webpack": "5.99.0",
+    "qs": "6.14.2",
+    "brace-expansion": "2.0.2",
+    "axios": "1.13.5",
+    "basic-ftp": "5.2.0",
+    "cross-spawn": "7.0.5"
+  }
+}' > package.json && \
+    pnpm install --no-lockfile --ignore-scripts 2>/dev/null && \
+    for PKG_ESCAPED in \
+        "fast-xml-parser@" \
+        "minimatch@" \
+        "tar@" \
+        "serialize-javascript@" \
+        "dompurify@" \
+        "ajv@" \
+        "webpack@" \
+        "qs@" \
+        "brace-expansion@" \
+        "axios@" \
+        "basic-ftp@" \
+        "cross-spawn@"; \
+    do \
+        PKG_NAME=$(echo "$PKG_ESCAPED" | sed 's/@$//; s/+/\//g'); \
+        SRC="$PATCH_DIR/node_modules/$PKG_NAME"; \
+        [ -d "$SRC" ] || continue; \
+        find /app/node_modules/.pnpm -maxdepth 1 -name "${PKG_ESCAPED}*" -type d | \
+        while read -r PNPM_DIR; do \
+            TARGET="$PNPM_DIR/node_modules/$PKG_NAME"; \
+            if [ -d "$TARGET" ]; then \
+                cp -rf "$SRC/" "$TARGET/"; \
+                echo "patched: $TARGET"; \
+            fi; \
+        done; \
+    done && \
+    rm -rf "$PATCH_DIR"
+
+# Удаляем esbuild-бинарник (golang stdlib CVEs)
+RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete && \
+    find /app -path "*/esbuild/bin/esbuild" -delete && \
+    find /app -name "esbuild" -type f -perm /111 -delete
+
+# ---------- stage 3: runtime ----------
 FROM cgr.dev/chainguard/node:latest
 
 WORKDIR /app
 
-# Копируем весь /app из официального worker-образа
-COPY --from=source /app /app
+COPY --from=patcher /app /app
 
 ENV NODE_ENV=production
 ENV PORT=3030
