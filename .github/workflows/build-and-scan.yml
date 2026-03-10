@@ -29,8 +29,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # driver:docker — образ попадает в локальный daemon, Trivy его видит через docker
+      # (по умолчанию docker-container изолирует образ в buildx-контейнере)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
 
       - name: Build web image
         uses: docker/build-push-action@v5
@@ -40,7 +44,6 @@ jobs:
           tags: ${{ env.WEB_IMAGE }}:${{ github.sha }}
           load: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Trivy - Table (web)
         uses: aquasecurity/trivy-action@master
@@ -93,7 +96,6 @@ jobs:
           path: trivy-web.json
           retention-days: 30
 
-      # Gate: только vuln — secret false-positive (GCP UI placeholder в Next.js chunks)
       - name: Trivy - Gate (web, fail on CRITICAL/HIGH vuln)
         uses: aquasecurity/trivy-action@master
         with:
@@ -122,6 +124,8 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
 
       - name: Build worker image
         uses: docker/build-push-action@v5
@@ -131,7 +135,6 @@ jobs:
           tags: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
           load: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Trivy - Table (worker)
         uses: aquasecurity/trivy-action@master
@@ -184,7 +187,6 @@ jobs:
           path: trivy-worker.json
           retention-days: 30
 
-      # Gate: только vuln — secret false-positive в worker тоже исключаем
       - name: Trivy - Gate (worker, fail on CRITICAL/HIGH vuln)
         uses: aquasecurity/trivy-action@master
         with:
@@ -200,6 +202,7 @@ jobs:
   # Job 3: Push web + worker to Docker Hub
   #   - runs only after BOTH gates pass
   #   - only on merge to main or daily schedule
+  #   - docker-container driver (по умолчанию) — multi-platform + GHA cache
   # ===========================================================
   push-to-dockerhub:
     name: Push -> Docker Hub
