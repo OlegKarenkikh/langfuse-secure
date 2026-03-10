@@ -4,7 +4,7 @@
 #
 # Stage 1 (source)  — официальный langfuse/langfuse:3
 # Stage 2 (patcher) — cgr.dev/chainguard/node:latest-dev
-#                      • устанавливаем pnpm
+#                      • устанавливаем pnpm (локально, rootless)
 #                      • апгрейдим уязвимые транзитивные зависимости
 #                        через прямую замену в pnpm store
 #                      • удаляем esbuild-бинарник (golang stdlib CVEs)
@@ -21,17 +21,18 @@ FROM cgr.dev/chainguard/node:latest-dev AS patcher
 WORKDIR /app
 COPY --from=source /app /app
 
-# Устанавливаем pnpm
-RUN npm install -g pnpm@latest --no-update-notifier 2>/dev/null
+# Устанавливаем pnpm локально (без -g) — Chainguard rootless не даёт писать в /usr/local
+RUN npm install --prefix /tmp/pnpm-bin pnpm --no-update-notifier 2>/dev/null
 
 # Скачиваем fix-версии во временный каталог,
 # затем перезаписываем каждое вхождение уязвимого пакета в /app/node_modules/.pnpm
 RUN set -e && \
+    PNPM=/tmp/pnpm-bin/node_modules/.bin/pnpm && \
     PATCH_DIR=/tmp/pnpm-patch && \
     mkdir -p "$PATCH_DIR" && \
     cd "$PATCH_DIR" && \
     echo '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.6","rollup":"4.59.0","minimatch":"9.0.7","tar":"7.5.10","serialize-javascript":"7.0.3","@hono/node-server":"1.19.10","dompurify":"3.2.5","ajv":"8.17.1","webpack":"5.99.0","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.13.5","cross-spawn":"7.0.5"}}' > package.json && \
-    pnpm install --no-lockfile --ignore-scripts 2>/dev/null && \
+    "$PNPM" install --no-lockfile --ignore-scripts 2>/dev/null && \
     for PKG_ESCAPED in \
         "fast-xml-parser@" \
         "rollup@" \
@@ -58,7 +59,7 @@ RUN set -e && \
             fi; \
         done; \
     done && \
-    rm -rf "$PATCH_DIR"
+    rm -rf "$PATCH_DIR" /tmp/pnpm-bin
 
 # Удаляем esbuild-бинарник (golang stdlib: CVE-2025-68121 и др.)
 # esbuild нужен только на build-stage, в production runtime не используется
