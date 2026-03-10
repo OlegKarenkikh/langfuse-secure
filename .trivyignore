@@ -22,3 +22,17 @@ CVE-2025-61726
 CVE-2025-61728
 # CVE-2025-61729  # golang crypto/x509: dev-only
 CVE-2025-61729
+
+# --- rollup: Path Traversal RCE (CVE-2026-27606) ---
+# rollup используется только как bundler в build-stage (Next.js webpack).
+# В production runtime образа rollup не присутствует и не вызывается.
+# Fix version: 4.59.0 — обновление контролируется upstream langfuse.
+# Tracked: https://avd.aquasec.com/nvd/cve-2026-27606
+CVE-2026-27606
+
+# --- serialize-javascript: RCE via RegExp.flags (GHSA-5c6j-r48x-rmvq) ---
+# serialize-javascript — транзитивная dev-зависимость webpack/terser.
+# Используется только при сборке (build-stage), в runtime контейнера отсутствует.
+# Fix version: 7.0.3 — обновление контролируется upstream langfuse.
+# Tracked: https://github.com/advisories/GHSA-5c6j-r48x-rmvq
+GHSA-5c6j-r48x-rmvq
