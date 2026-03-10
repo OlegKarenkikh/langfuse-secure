@@ -27,17 +27,18 @@ RUN chmod -R u+w /app/node_modules 2>/dev/null || true
 # Устанавливаем pnpm
 RUN npm install --prefix /tmp/pnpm-bin pnpm --no-update-notifier 2>/dev/null
 
-# Патчим уязвимые пакеты через pnpm.
-# Используем cp -rL (разворачиваем symlinks) + rm -rf перед копированием,
+# Патчим уязвимые пакеты.
+# JSON в одну строку через printf — избегаем ошибку парсера Dockerfile.
+# cp -rL разворачивает symlinks + rm -rf перед копированием
 # чтобы обойти Permission denied при создании symlinks поверх существующих.
 RUN set -e; \
     PNPM=/tmp/pnpm-bin/node_modules/.bin/pnpm; \
     PATCHDIR=/tmp/pnpm-patch; \
     mkdir -p "$PATCHDIR"; \
     cd "$PATCHDIR"; \
-    printf '%s' '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.6","rollup":"4.59.0","minimatch":"9.0.7","tar":"7.5.10","serialize-javascript":"7.0.3","@hono/node-server":"1.19.10","dompurify":"3.2.5","ajv":"8.17.1","webpack":"5.99.0","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.13.5","cross-spawn":"7.0.5"}}' > package.json; \
+    printf '%s' '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.6","rollup":"4.59.0","minimatch":"9.0.7","tar":"7.5.11","serialize-javascript":"7.0.3","@hono/node-server":"1.19.10","dompurify":"3.2.5","ajv":"8.17.1","webpack":"5.99.0","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.13.5","cross-spawn":"7.0.5","@smithy/config-resolver":"3.0.10"}}' > package.json; \
     $PNPM install --no-lockfile --ignore-scripts 2>/dev/null; \
-    for PKGESCAPED in fast-xml-parser rollup minimatch tar serialize-javascript @hono/node-server dompurify ajv webpack qs brace-expansion axios cross-spawn; do \
+    for PKGESCAPED in fast-xml-parser rollup minimatch tar serialize-javascript @hono/node-server dompurify ajv webpack qs brace-expansion axios cross-spawn @smithy/config-resolver; do \
       SRC="$PATCHDIR/node_modules/$PKGESCAPED"; \
       [ -d "$SRC" ] || continue; \
       find /app/node_modules/.pnpm -maxdepth 2 -name "$PKGESCAPED" -type d 2>/dev/null | while read -r TARGET; do \
@@ -53,14 +54,13 @@ RUN set -e; \
     done; \
     rm -rf "$PATCHDIR" /tmp/pnpm-bin
 
-# Удаляем esbuild-бинари (golang, dev-инструмент, 6 CVE golang stdlib)
-# CVE-2025-68121, CVE-2025-47907, CVE-2025-58183, CVE-2025-61726, CVE-2025-61728, CVE-2025-61729
+# Удаляем esbuild-бинари (все CVE golang stdlib устранены физическим удалением)
 RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
     find /app -path "*/esbuild/bin/esbuild" -delete 2>/dev/null; \
     find /app -name "esbuild" -type f -perm /111 -delete 2>/dev/null; \
     true
 
-# ---------- stage 3: runtime (по аналогии с clickhouse-secure — минимальный distroless) ----------
+# ---------- stage 3: runtime (distroless, по аналогии с clickhouse-secure) ----------
 FROM cgr.dev/chainguard/node:latest
 
 LABEL org.opencontainers.image.title="langfuse-secure" \

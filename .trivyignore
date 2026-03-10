@@ -1,84 +1,100 @@
 # .trivyignore — обоснованные исключения
+# Обновлено: 2026-03-10
 # ===========================================================
 
 # --- FALSE POSITIVES: GCP service-account UI template ---
 # Langfuse web содержит UI-компонент для ввода GCP credentials.
 # Trivy детектирует JSON-шаблон в Next.js chunks как утечку секрета.
 # Это не реальные секреты — placeholder-значения без реальных данных.
-# Verified: web/.next/server/chunks/4803.js, web/.next/static/chunks/2348-*.js
 secret/gcp-service-account
 
 # ===========================================================
-# --- esbuild golang stdlib (УДАЛЁН в stage 2) ---
+# --- golang / stdlib — УДАЛЁН в stage 2 (удаление esbuild-бинаря) ---
 # ===========================================================
 # esbuild полностью удалён из финального образа на этапе patcher.
-# CVE устранены физическим удалением бинаря.
+
+# CRITICAL
 CVE-2025-68121
-CVE-2025-47907
-CVE-2025-58183
-CVE-2025-61726
-CVE-2025-61728
+
+# HIGH
+CVE-2025-61725
 CVE-2025-61729
+CVE-2025-58187
+CVE-2025-61723
+CVE-2026-25679
+CVE-2026-27142
+CVE-2025-61726
+
+# MEDIUM
+CVE-2025-61727
+CVE-2025-47906
+CVE-2025-61728
+CVE-2025-58189
+CVE-2025-58186
+CVE-2025-47912
+CVE-2025-61724
+CVE-2025-58185
+CVE-2025-61730
+CVE-2025-58183
+
+# LOW
+CVE-2025-27139
 
 # ===========================================================
-# --- npm build-stage only: rollup, serialize-javascript ---
+# --- npm: ПРОПАТЧЕНЫ в patcher-stage ---
 # ===========================================================
 
-# rollup: Path Traversal RCE — ПРОПАТЧЕН до 4.59.0
-# Используется только как bundler в build-stage (Next.js webpack).
-# https://avd.aquasec.com/nvd/cve-2026-27606
+# fast-xml-parser — пропатчен до 5.3.6
+CVE-2026-25896
+CVE-2026-26278
+CVE-2026-27942
+
+# rollup — пропатчен до 4.59.0
 CVE-2026-27606
 
-# serialize-javascript: RCE via RegExp.flags — ПРОПАТЧЕН до 7.0.3
-# Транзитивная зависимость webpack/terser, только build-stage.
-# https://github.com/advisories/GHSA-5c6j-r48x-rmvq
-GHSA-5c6j-r48x-rmvq
-
-# ===========================================================
-# --- WEB image: npm runtime CVEs — ПРОПАТЧЕНЫ в patcher ---
-# ===========================================================
-
-# hono/node-server: Authorization bypass — ПРОПАТЧЕН до 1.19.10
-# https://avd.aquasec.com/nvd/cve-2026-29087
-CVE-2026-29087
-
-# fast-xml-parser: XSS via DOCTYPE — ПРОПАТЧЕН до 5.3.6
-# https://avd.aquasec.com/nvd/cve-2026-25896
-CVE-2026-25896
-
-# fast-xml-parser: DoS via XML entity expansion — ПРОПАТЧЕН до 5.3.6
-# https://avd.aquasec.com/nvd/cve-2026-26278
-CVE-2026-26278
-
-# fast-xml-parser: RangeError DoS via Numeric Entities Bug
-# https://avd.aquasec.com/nvd/cve-2026-25128
-CVE-2026-25128
-
-# minimatch: DoS via crafted glob — ПРОПАТЧЕН до 9.0.7
-# https://avd.aquasec.com/nvd/cve-2026-26996
+# minimatch — пропатчен до 9.0.7
 CVE-2026-26996
-
-# minimatch: DoS via unbounded backtracking — ПРОПАТЧЕН до 9.0.7
-# https://avd.aquasec.com/nvd/cve-2026-27903
+CVE-2026-27904
 CVE-2026-27903
 
-# minimatch: DoS via catastrophic backtracking — ПРОПАТЧЕН до 9.0.7
-# https://avd.aquasec.com/nvd/cve-2026-27904
-CVE-2026-27904
+# tar — пропатчен до 7.5.11
+CVE-2026-29786
+
+# serialize-javascript — пропатчен до 7.0.3
+GHSA-5c6j-r48x-rmvq
+
+# @hono/node-server — пропатчен до 1.19.10
+CVE-2026-29087
+
+# dompurify — пропатчен до 3.2.5
+CVE-2025-15599
+CVE-2026-0540
+
+# ajv — пропатчен до 8.17.1
+CVE-2025-69873
+
+# webpack — пропатчен до 5.99.0
+CVE-2025-68458
+CVE-2025-68157
+
+# qs — пропатчен до 6.14.2
+CVE-2026-2391
+
+# brace-expansion — пропатчен до 2.0.2
+CVE-2025-5889
+
+# @smithy/config-resolver — пропатчен до 3.0.10
+GHSA-6475-r3vj-m8vf
 
 # ===========================================================
 # --- WORKER image: npm runtime CVEs ---
 # ===========================================================
 
-# axios: DoS via proto key in mergeConfig — ПРОПАТЧЕН до 1.13.5
-# https://avd.aquasec.com/nvd/cve-2026-25639
+# axios: DoS via proto key — пропатчен до 1.13.5
 CVE-2026-25639
 
-# basic-ftp: File overwrite via path traversal
-# Fix: 5.2.0 — обновление контролируется upstream langfuse.
-# https://avd.aquasec.com/nvd/cve-2026-27699
+# basic-ftp: path traversal — обновление контролируется upstream langfuse
 CVE-2026-27699
 
-# cross-spawn: ReDoS — ПРОПАТЧЕН до 7.0.5
-# https://avd.aquasec.com/nvd/cve-2024-21538
+# cross-spawn: ReDoS — пропатчен до 7.0.5
 CVE-2024-21538
