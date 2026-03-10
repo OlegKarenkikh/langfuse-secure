@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1
+# =================================================================
+# Langfuse WORKER — secure hardened image
+# Strategy: copy prebuilt artifacts from official langfuse/langfuse-worker:3
+#            into cgr.dev/chainguard/node:latest (0 CVE, no shell,
+#            non-root uid=65532)
+# =================================================================
+FROM langfuse/langfuse-worker:3 AS source
+
+FROM cgr.dev/chainguard/node:latest
+
+WORKDIR /app
+
+# Копируем весь /app из официального worker-образа
+COPY --from=source /app /app
+
+ENV NODE_ENV=production
+ENV PORT=3030
+
+EXPOSE 3030
+
+CMD ["node", "./worker/dist/index.js"]

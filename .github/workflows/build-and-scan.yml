@@ -9,15 +9,16 @@ on:
     - cron: '0 3 * * *'
 
 env:
-  DOCKERHUB_IMAGE: olegkarenkikh/langfuse-secure
+  WEB_IMAGE:    olegkarenkikh/langfuse-secure
+  WORKER_IMAGE: olegkarenkikh/langfuse-worker-secure
 
 jobs:
 
   # ===========================================================
-  # Job 1: Build, Trivy scan, gate
+  # Job 1: Build + Trivy scan + Gate — WEB
   # ===========================================================
-  build-and-scan:
-    name: Build -> Trivy Scan -> Gate
+  build-web:
+    name: Web — Build -> Trivy -> Gate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -31,66 +32,68 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image (local)
+      - name: Build web image
         uses: docker/build-push-action@v5
         with:
           context: .
-          tags: ${{ env.DOCKERHUB_IMAGE }}:${{ github.sha }}
+          file: Dockerfile
+          tags: ${{ env.WEB_IMAGE }}:${{ github.sha }}
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Trivy - Table (PR log)
+      - name: Trivy - Table (web)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.DOCKERHUB_IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.WEB_IMAGE }}:${{ github.sha }}
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           trivyignores: .trivyignore
         continue-on-error: true
 
-      - name: Trivy - SARIF
+      - name: Trivy - SARIF (web)
         uses: aquasecurity/trivy-action@master
         if: always()
         continue-on-error: true
         with:
-          image-ref: ${{ env.DOCKERHUB_IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.WEB_IMAGE }}:${{ github.sha }}
           format: sarif
-          output: trivy-results.sarif
+          output: trivy-web.sarif
           severity: CRITICAL,HIGH,MEDIUM
           ignore-unfixed: true
           trivyignores: .trivyignore
 
-      - name: Upload SARIF to GitHub Security
+      - name: Upload SARIF (web)
         uses: github/codeql-action/upload-sarif@v3
-        if: always() && hashFiles('trivy-results.sarif') != ''
+        if: always() && hashFiles('trivy-web.sarif') != ''
         with:
-          sarif_file: trivy-results.sarif
+          sarif_file: trivy-web.sarif
+          category: web
 
-      - name: Trivy - JSON artifact
+      - name: Trivy - JSON artifact (web)
         uses: aquasecurity/trivy-action@master
         if: always()
         continue-on-error: true
         with:
-          image-ref: ${{ env.DOCKERHUB_IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.WEB_IMAGE }}:${{ github.sha }}
           format: json
-          output: trivy-results.json
+          output: trivy-web.json
           severity: CRITICAL,HIGH,MEDIUM,LOW
           trivyignores: .trivyignore
 
-      - name: Upload JSON artifact
+      - name: Upload JSON artifact (web)
         uses: actions/upload-artifact@v4
-        if: always() && hashFiles('trivy-results.json') != ''
+        if: always() && hashFiles('trivy-web.json') != ''
         with:
-          name: trivy-report-${{ github.sha }}
-          path: trivy-results.json
+          name: trivy-web-${{ github.sha }}
+          path: trivy-web.json
           retention-days: 30
 
-      - name: Trivy - Gate (fail on CRITICAL/HIGH)
+      - name: Trivy - Gate (web, fail on CRITICAL/HIGH)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.DOCKERHUB_IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.WEB_IMAGE }}:${{ github.sha }}
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: true
@@ -98,15 +101,100 @@ jobs:
           exit-code: '1'
 
   # ===========================================================
-  # Job 2: Push to Docker Hub
-  #   - runs only after gate passes
-  #   - only on merge to main or daily schedule (never on PR)
-  #   - requires secrets: DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
+  # Job 2: Build + Trivy scan + Gate — WORKER
+  # ===========================================================
+  build-worker:
+    name: Worker — Build -> Trivy -> Gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.worker
+          tags: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy - Table (worker)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+        continue-on-error: true
+
+      - name: Trivy - SARIF (worker)
+        uses: aquasecurity/trivy-action@master
+        if: always()
+        continue-on-error: true
+        with:
+          image-ref: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          format: sarif
+          output: trivy-worker.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+
+      - name: Upload SARIF (worker)
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('trivy-worker.sarif') != ''
+        with:
+          sarif_file: trivy-worker.sarif
+          category: worker
+
+      - name: Trivy - JSON artifact (worker)
+        uses: aquasecurity/trivy-action@master
+        if: always()
+        continue-on-error: true
+        with:
+          image-ref: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          format: json
+          output: trivy-worker.json
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+          trivyignores: .trivyignore
+
+      - name: Upload JSON artifact (worker)
+        uses: actions/upload-artifact@v4
+        if: always() && hashFiles('trivy-worker.json') != ''
+        with:
+          name: trivy-worker-${{ github.sha }}
+          path: trivy-worker.json
+          retention-days: 30
+
+      - name: Trivy - Gate (worker, fail on CRITICAL/HIGH)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          exit-code: '1'
+
+  # ===========================================================
+  # Job 3: Push web + worker to Docker Hub
+  #   - runs only after BOTH gates pass
+  #   - only on merge to main or daily schedule
   # ===========================================================
   push-to-dockerhub:
     name: Push -> Docker Hub
     runs-on: ubuntu-latest
-    needs: build-and-scan
+    needs: [build-web, build-worker]
     if: |
       github.event_name != 'pull_request' &&
       (github.ref == 'refs/heads/main' || github.event_name == 'schedule')
@@ -117,23 +205,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up QEMU (multi-arch)
+      - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Generate image tags
+      - name: Generate tags
         id: tags
         run: |
           SHORT_SHA="${GITHUB_SHA::8}"
           DATE="$(date -u +%Y-%m-%d)"
-          TAGS="${{ env.DOCKERHUB_IMAGE }}:latest"
-          TAGS="${TAGS},${{ env.DOCKERHUB_IMAGE }}:${SHORT_SHA}"
-          TAGS="${TAGS},${{ env.DOCKERHUB_IMAGE }}:${DATE}"
-          TAGS="${TAGS},${{ env.DOCKERHUB_IMAGE }}:3"
-          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          WEB_TAGS="${{ env.WEB_IMAGE }}:latest,${{ env.WEB_IMAGE }}:3,${{ env.WEB_IMAGE }}:${SHORT_SHA},${{ env.WEB_IMAGE }}:${DATE}"
+          WORKER_TAGS="${{ env.WORKER_IMAGE }}:latest,${{ env.WORKER_IMAGE }}:3,${{ env.WORKER_IMAGE }}:${SHORT_SHA},${{ env.WORKER_IMAGE }}:${DATE}"
+          echo "web_tags=${WEB_TAGS}"       >> "$GITHUB_OUTPUT"
+          echo "worker_tags=${WORKER_TAGS}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}"     >> "$GITHUB_OUTPUT"
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -141,13 +228,14 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push to Docker Hub
-        id: build
+      - name: Build and push WEB
+        id: build-web
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: Dockerfile
           push: true
-          tags: ${{ steps.tags.outputs.tags }}
+          tags: ${{ steps.tags.outputs.web_tags }}
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -157,8 +245,28 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.tags.outputs.short_sha }}
 
-      - name: Print digest
+      - name: Build and push WORKER
+        id: build-worker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.worker
+          push: true
+          tags: ${{ steps.tags.outputs.worker_tags }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.title=langfuse-worker-secure
+            org.opencontainers.image.source=https://github.com/OlegKarenkikh/langfuse-secure
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.tags.outputs.short_sha }}
+
+      - name: Print digests
         run: |
-          echo "Image : ${{ env.DOCKERHUB_IMAGE }}"
-          echo "Tags  : ${{ steps.tags.outputs.tags }}"
-          echo "Digest: ${{ steps.build.outputs.digest }}"
+          echo "Web    image : ${{ env.WEB_IMAGE }}"
+          echo "Web    tags  : ${{ steps.tags.outputs.web_tags }}"
+          echo "Web    digest: ${{ steps.build-web.outputs.digest }}"
+          echo "Worker image : ${{ env.WORKER_IMAGE }}"
+          echo "Worker tags  : ${{ steps.tags.outputs.worker_tags }}"
+          echo "Worker digest: ${{ steps.build-worker.outputs.digest }}"

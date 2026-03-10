@@ -1,33 +1,35 @@
 # syntax=docker/dockerfile:1
 # =================================================================
-# Stage 1: builder — cgr.dev/chainguard/node:latest-dev
-#   - содержит npm/yarn, shell, компилятор
-#   - пересобирается ежедневно из Wolfi
-#   - базовый образ с 0 CVE
+# Langfuse WEB — secure hardened image
+# Strategy: copy prebuilt artifacts from official langfuse/langfuse:3
+#            into cgr.dev/chainguard/node:latest (0 CVE, no shell,
+#            non-root uid=65532)
+#
+# Официальный образ уже содержит собранный Next.js standalone,
+# prisma-схемы, clickhouse-миграции и entrypoint.sh.
+# Мы НЕ пересобираем — только меняем базовый OS-слой.
 # =================================================================
-FROM cgr.dev/chainguard/node:latest-dev AS builder
+FROM langfuse/langfuse:3 AS source
 
-WORKDIR /app
-
-# Копируем исходники официального Langfuse образа
-# Используем официальный prebuilt-образ как источник artефактов
-COPY --from=langfuse/langfuse:3 /app /app
-
-# =================================================================
-# Stage 2: runtime — cgr.dev/chainguard/node:latest
-#   - нет shell, нет npm — минимальная поверхность атаки
-#   - 0 CVE, встроенный SBOM + Sigstore-подпись
-#   - non-root по умолчанию (uid=65532)
-# =================================================================
 FROM cgr.dev/chainguard/node:latest
 
 WORKDIR /app
 
-# Копируем собранное приложение из builder
-COPY --from=builder /app /app
+# Копируем весь /app из официального образа
+COPY --from=source /app /app
+
+# Chainguard node — non-root (uid=65532) по умолчанию
+# entrypoint.sh требует sh: запускаем через node напрямую
+# (dumb-init и shell отсутствуют в Chainguard — используем tini через node)
 
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV DOCKER_BUILD=0
+ENV NEXT_MANUAL_SIG_HANDLE=true
+ENV PORT=3000
 
 EXPOSE 3000
 
-CMD ["node", "web/server.js"]
+# Chainguard node не имеет dumb-init/sh — запускаем server.js напрямую
+# Prisma-миграции и инициализация должны выполняться отдельным init-контейнером
+CMD ["node", "./web/server.js", "--keepAliveTimeout", "110000"]
