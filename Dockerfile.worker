@@ -28,24 +28,7 @@ RUN set -e && \
     PATCH_DIR=/tmp/pnpm-patch && \
     mkdir -p "$PATCH_DIR" && \
     cd "$PATCH_DIR" && \
-    printf '%s' '{
-  "name": "cve-patcher",
-  "version": "1.0.0",
-  "dependencies": {
-    "fast-xml-parser": "5.3.6",
-    "minimatch": "9.0.7",
-    "tar": "7.5.10",
-    "serialize-javascript": "7.0.3",
-    "dompurify": "3.2.5",
-    "ajv": "8.17.1",
-    "webpack": "5.99.0",
-    "qs": "6.14.2",
-    "brace-expansion": "2.0.2",
-    "axios": "1.13.5",
-    "basic-ftp": "5.2.0",
-    "cross-spawn": "7.0.5"
-  }
-}' > package.json && \
+    echo '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.6","minimatch":"9.0.7","tar":"7.5.10","serialize-javascript":"7.0.3","dompurify":"3.2.5","ajv":"8.17.1","webpack":"5.99.0","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.13.5","basic-ftp":"5.2.0","cross-spawn":"7.0.5"}}' > package.json && \
     pnpm install --no-lockfile --ignore-scripts 2>/dev/null && \
     for PKG_ESCAPED in \
         "fast-xml-parser@" \
@@ -68,8 +51,7 @@ RUN set -e && \
         while read -r PNPM_DIR; do \
             TARGET="$PNPM_DIR/node_modules/$PKG_NAME"; \
             if [ -d "$TARGET" ]; then \
-                cp -rf "$SRC/" "$TARGET/"; \
-                echo "patched: $TARGET"; \
+                cp -rf "$SRC/" "$TARGET/" && echo "patched: $TARGET"; \
             fi; \
         done; \
     done && \
