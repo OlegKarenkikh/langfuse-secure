@@ -5,6 +5,7 @@ Secure hardened [Langfuse v3](https://langfuse.com) Docker images — **web** an
 ## Approach
 
 - **Base**: `cgr.dev/chainguard/node:latest` (Wolfi, 0 CVE, no shell, non-root uid=65532)
+- **Patcher**: `alpine:3.21` with `rsync --copy-links --delete` — resolves pnpm symlinks, replaces vulnerable packages
 - **Strategy**: copy prebuilt artifacts from official `langfuse/langfuse:3` and `langfuse/langfuse-worker:3` — no full TypeScript rebuild
 - **Daily rebuild** via GitHub Actions schedule — picks up latest Chainguard node patches
 - **Trivy gate**: blocks push on any unfixed CRITICAL/HIGH CVE (web and worker scanned independently)
