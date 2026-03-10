@@ -2,33 +2,31 @@
 # =================================================================
 # Langfuse WEB — secure hardened image
 #
-# Stage 1 (source)   — langfuse/langfuse:3 (Next.js standalone)
-# Stage 2 (patcher)  — cgr.dev/chainguard/node:latest-dev
-#                       • замена уязвимых npm-пакетов через rsync --copy-links
-#                         (обходит Permission denied при cp -rL поверх symlinks)
-#                       • удаление esbuild-бинаря (golang CVE)
-# Stage 3 (runtime)  — cgr.dev/chainguard/node:latest (0 CVE, distroless)
+# Stage 1 (source)        — langfuse/langfuse:3 (Next.js standalone)
+# Stage 2 (patcher-node)  — cgr.dev/chainguard/node:latest-dev
+#                            • pnpm install патч-версий пакетов
+# Stage 3 (patcher-rsync) — alpine:3.21 (только для rsync --copy-links)
+#                            • rsync разворачивает симлинки pnpm store
+#                            • удаляет esbuild-бинарь
+# Stage 4 (runtime)       — cgr.dev/chainguard/node:latest (0 CVE, distroless)
 # =================================================================
 
 # ---------- stage 1: source ----------
 FROM langfuse/langfuse:3 AS source
 
-# ---------- stage 2: patcher ----------
-FROM cgr.dev/chainguard/node:latest-dev AS patcher
+# ---------- stage 2: patcher-node (pnpm install патчей) ----------
+FROM cgr.dev/chainguard/node:latest-dev AS patcher-node
 
 USER root
 WORKDIR /app
 
 COPY --from=source /app /app
 
-# Открываем запись на весь /app (включая esbuild binary)
+# Открываем запись на весь /app
 RUN chmod -R u+w /app
 
-# Устанавливаем pnpm + rsync
-RUN npm install --prefix /tmp/pnpm-bin pnpm --no-update-notifier --quiet 2>/dev/null; \
-    apk add --no-cache rsync 2>/dev/null || true
-
-# Скачиваем патч-версии всех уязвимых пакетов
+# Устанавливаем pnpm и скачиваем патч-версии
+RUN npm install --prefix /tmp/pnpm-bin pnpm --no-update-notifier --quiet 2>/dev/null
 RUN set -e; \
     PNPM=/tmp/pnpm-bin/node_modules/.bin/pnpm; \
     PATCHDIR=/tmp/pnpm-patch; \
@@ -37,9 +35,16 @@ RUN set -e; \
     $PNPM install --no-lockfile --ignore-scripts --shamefully-hoist 2>/dev/null; \
     echo "pnpm install done"
 
-# Патчим каждый пакет: находим ВСЕ вхождения в .pnpm store и прямые,
-# затем rsync --copy-links --delete (разворачивает symlinks, не падает на них).
-# Для scoped-пакетов (@hono/node-server, @smithy/...) ищем по escaped-имени директории.
+# ---------- stage 3: patcher-rsync (alpine — rsync + patch) ----------
+FROM alpine:3.21 AS patcher-rsync
+
+RUN apk add --no-cache rsync
+
+WORKDIR /app
+COPY --from=patcher-node /app /app
+COPY --from=patcher-node /tmp/pnpm-patch /tmp/pnpm-patch
+
+# Патчим все вхождения уязвимых пакетов через rsync --copy-links --delete
 RUN set -e; \
     PATCHDIR=/tmp/pnpm-patch; \
     patch_pkg() { \
@@ -47,10 +52,6 @@ RUN set -e; \
       local SRC="$PATCHDIR/node_modules/$PKG"; \
       [ -d "$SRC" ] || { echo "SKIP $PKG (not in patchdir)"; return; }; \
       local BASENAME; BASENAME=$(basename "$PKG"); \
-      local SCOPEDIR; \
-      if echo "$PKG" | grep -q '^@'; then \
-        SCOPEDIR=$(echo "$PKG" | cut -d/ -f1 | sed 's/@//'); \
-      fi; \
       find /app/node_modules/.pnpm -mindepth 3 -maxdepth 4 -type d -name "$BASENAME" 2>/dev/null | while read -r TARGET; do \
         echo "patching $TARGET"; \
         chmod -R u+w "$TARGET" 2>/dev/null || true; \
@@ -65,15 +66,15 @@ RUN set -e; \
     }; \
     for P in fast-xml-parser rollup minimatch tar serialize-javascript dompurify ajv webpack qs brace-expansion axios cross-spawn basic-ftp; do patch_pkg "$P"; done; \
     patch_pkg "@hono/node-server"; \
-    rm -rf "$PATCHDIR" /tmp/pnpm-bin
+    rm -rf "$PATCHDIR"
 
-# Удаляем esbuild-бинарь (все golang/stdlib CVE устраняются физически)
-RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -type f -delete 2>/dev/null; \
-    find /app -path "*/esbuild/bin/esbuild" -type f -delete 2>/dev/null; \
+# Удаляем esbuild-бинарь (golang CVE)
+RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
+    find /app -path "*/esbuild/bin/esbuild" -delete 2>/dev/null; \
     find /app -name "esbuild" -type f -perm /111 -delete 2>/dev/null; \
     true
 
-# ---------- stage 3: runtime ----------
+# ---------- stage 4: runtime ----------
 FROM cgr.dev/chainguard/node:latest
 
 LABEL org.opencontainers.image.title="langfuse-secure" \
@@ -82,7 +83,7 @@ LABEL org.opencontainers.image.title="langfuse-secure" \
 
 WORKDIR /app
 
-COPY --from=patcher /app /app
+COPY --from=patcher-rsync /app /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
