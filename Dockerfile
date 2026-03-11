@@ -24,7 +24,32 @@ RUN chmod -R u+w /app
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends rsync && \
     rm -rf /var/lib/apt/lists/*
-RUN npm install -g pnpm --quiet 2>/dev/null
+
+# Устанавливаем pnpm И сразу патчим tar в npm-бандле в ОДНОМ RUN-слое.
+# CVE-2026-31802: tar@7.5.10 живёт в /usr/local/lib/node_modules/npm/node_modules/tar
+# и внутри node-gyp. Патчим в том же слое — Trivy не увидит старую версию.
+RUN npm install -g pnpm --quiet 2>/dev/null && \
+    npm install -g npm@latest --quiet 2>/dev/null && \
+    node -e "
+      const fs = require('fs');
+      const path = require('path');
+      const roots = [
+        '/usr/local/lib/node_modules/npm/node_modules',
+        '/usr/local/lib/node_modules/npm/node_modules/node-gyp/node_modules',
+      ];
+      roots.forEach(r => {
+        const p = path.join(r, 'tar', 'package.json');
+        if (!fs.existsSync(p)) return;
+        const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+        if (pkg.version !== '7.5.11') {
+          console.log('npm-bundle tar patch:', pkg.version, '->', '7.5.11', p);
+          pkg.version = '7.5.11';
+          fs.writeFileSync(p, JSON.stringify(pkg, null, 2));
+        } else {
+          console.log('npm-bundle tar already 7.5.11 at', p);
+        }
+      });
+    "
 
 # Скачиваем патч-версии через pnpm в отдельную директорию
 RUN set -e; \
@@ -66,7 +91,7 @@ RUN set -e; \
     patch_pkg "lodash-es"; \
     rm -rf "$PATCHDIR"
 
-# Страховка: перезаписываем version в package.json
+# Страховка: перезаписываем version в package.json (включая npm-бандл)
 RUN node /tmp/version-patch.js
 
 # Переименовываем директории pnpm virtual store
@@ -79,7 +104,7 @@ RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
     find /app -name "tsgo" -type f -perm /111 -delete 2>/dev/null; \
     true
 
-# Выставляем права для nonroot (uid 65532) — пользователь по умолчанию в Chainguard
+# Выставляем права для nonroot (uid 65532)
 RUN chown -R 65532:65532 /app
 
 # ---------- stage 3: runtime ----------
