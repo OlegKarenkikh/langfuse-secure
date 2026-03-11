@@ -2,9 +2,9 @@
 # =================================================================
 # Langfuse WORKER — secure hardened image
 #
-# Stage 1 (source)        — langfuse/langfuse-worker:3
-# Stage 2 (patcher)       — node:22-slim (Debian bookworm-slim, glibc)
-# Stage 3 (runtime)       — node:22-slim (non-root, npm removed)
+# Stage 1 (source)  — langfuse/langfuse-worker:3
+# Stage 2 (patcher) — node:22-slim (Debian bookworm-slim, glibc)
+# Stage 3 (runtime) — cgr.dev/chainguard/node:latest (Wolfi, ~0 CVE)
 # =================================================================
 
 # ---------- stage 1: source ----------
@@ -64,35 +64,26 @@ RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
     find /app -name "tsgo" -type f -perm /111 -delete 2>/dev/null; \
     true
 
+# Выставляем права для nonroot (uid 65532) — пользователь по умолчанию в Chainguard
+RUN chown -R 65532:65532 /app
+
 # ---------- stage 3: runtime ----------
-FROM node:22-slim
+# Chainguard Node (Wolfi-based): ~0 OS CVE, no npm, no shell, non-root by default
+FROM cgr.dev/chainguard/node:latest
 
 LABEL org.opencontainers.image.title="langfuse-worker-secure" \
       org.opencontainers.image.source="https://github.com/OlegKarenkikh/langfuse-secure" \
       org.opencontainers.image.licenses="MIT"
 
-RUN groupadd -r langfuse && useradd -r -g langfuse -s /sbin/nologin langfuse
-
-# Удаляем npm из runtime-образа: worker запускается через node напрямую,
-# npm в рантайме не нужен. Это устраняет весь класс npm-bundled CVE
-# (glob, minimatch, tar и др.) без каких-либо обходных решений.
-RUN npm uninstall -g npm 2>/dev/null || true; \
-    rm -rf /usr/local/lib/node_modules/npm \
-           /usr/local/bin/npm \
-           /usr/local/bin/npx; \
-    true
-
 WORKDIR /app
 
 COPY --from=patcher /app /app
 
-RUN chown -R langfuse:langfuse /app
-
-USER langfuse
+USER nonroot
 
 ENV NODE_ENV=production
 ENV PORT=3030
 
 EXPOSE 3030
 
-CMD ["node", "./worker/dist/index.js"]
+CMD ["./worker/dist/index.js"]
