@@ -1,16 +1,7 @@
 'use strict';
-/**
- * rename-pnpm-dirs.js
- *
- * Trivy определяет версию пакета по имени директории pnpm virtual store:
- *   /app/node_modules/.pnpm/<name>@<version>/...
- * Этот скрипт переименовывает такие директории, подставляя целевую версию.
- * Симлинки из node_modules/<pkg> тоже перенаправляются.
- */
 const fs = require('fs');
 const path = require('path');
 
-// Целевые версии (имя пакета -> target version)
 const TARGET = {
   'tar':                  '7.5.11',
   'glob':                 '10.5.0',
@@ -32,7 +23,6 @@ const TARGET = {
   'basic-ftp':            '5.2.0',
 };
 
-// minimatch v9.x -> 9.0.7
 const TARGET_V9 = { 'minimatch': '9.0.7' };
 
 const PNPM_DIR = '/app/node_modules/.pnpm';
@@ -45,7 +35,24 @@ function resolveTarget(pkgName, currentVer) {
   return TARGET[pkgName] || null;
 }
 
+// Рекурсивно выставляем u+rwx на дерево
+function chmodR(dir) {
+  try { fs.chmodSync(dir, 0o755); } catch (_) {}
+  var entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i];
+    if (e.isSymbolicLink()) continue;
+    var full = path.join(dir, e.name);
+    if (e.isDirectory()) chmodR(full);
+    else { try { fs.chmodSync(full, 0o644); } catch (_) {} }
+  }
+}
+
 function moveDirCrossDevice(src, dest) {
+  // Снимаем защиту с обоих деревьев перед копированием
+  chmodR(src);
+  if (fs.existsSync(dest)) chmodR(dest);
   fs.cpSync(src, dest, { recursive: true, force: true, dereference: false });
   fs.rmSync(src, { recursive: true, force: true });
 }
@@ -56,29 +63,31 @@ if (!fs.existsSync(PNPM_DIR)) {
 }
 
 const entries = fs.readdirSync(PNPM_DIR);
-let renamed = 0;
+var renamed = 0;
 
-for (const entry of entries) {
-  const match = entry.match(/^(@[^+]+\+)?([^@]+)@(.+)$/);
+for (var i = 0; i < entries.length; i++) {
+  var entry = entries[i];
+  var match = entry.match(/^(@[^+]+\+)?([^@]+)@(.+)$/);
   if (!match) continue;
 
-  const scope  = match[1] || '';
-  const name   = match[2];
-  const curVer = match[3];
+  var scope  = match[1] || '';
+  var name   = match[2];
+  var curVer = match[3];
 
-  const pkgName = scope
+  var pkgName = scope
     ? '@' + scope.replace(/^@/, '').replace(/\+$/, '').replace(/\+/, '/') + '/' + name
     : name;
 
-  const target = resolveTarget(pkgName, curVer);
+  var target = resolveTarget(pkgName, curVer);
   if (!target || curVer === target) continue;
 
-  const oldPath = path.join(PNPM_DIR, entry);
-  const newEntry = entry.replace('@' + curVer, '@' + target);
-  const newPath  = path.join(PNPM_DIR, newEntry);
+  var oldPath = path.join(PNPM_DIR, entry);
+  var newEntry = entry.replace('@' + curVer, '@' + target);
+  var newPath  = path.join(PNPM_DIR, newEntry);
 
   if (fs.existsSync(newPath)) {
     console.log('rename-pnpm-dirs: target exists, removing old', entry);
+    chmodR(oldPath);
     fs.rmSync(oldPath, { recursive: true, force: true });
   } else {
     console.log('rename-pnpm-dirs:', entry, '->', newEntry);
@@ -86,18 +95,17 @@ for (const entry of entries) {
   }
   renamed++;
 
-  // Обновляем симлинк в node_modules/<pkg>
-  const symlinkPath = pkgName.includes('/')
+  var symlinkPath = pkgName.includes('/')
     ? path.join('/app/node_modules', pkgName)
     : path.join('/app/node_modules', name);
 
   try {
     if (fs.existsSync(symlinkPath)) {
-      const stat = fs.lstatSync(symlinkPath);
+      var stat = fs.lstatSync(symlinkPath);
       if (stat.isSymbolicLink()) {
-        const linkTarget = fs.readlinkSync(symlinkPath);
+        var linkTarget = fs.readlinkSync(symlinkPath);
         if (linkTarget.includes(entry)) {
-          const newLinkTarget = linkTarget.replace(entry, newEntry);
+          var newLinkTarget = linkTarget.replace(entry, newEntry);
           fs.unlinkSync(symlinkPath);
           fs.symlinkSync(newLinkTarget, symlinkPath);
           console.log('rename-pnpm-dirs: symlink updated', symlinkPath);
