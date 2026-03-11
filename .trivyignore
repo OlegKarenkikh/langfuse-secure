@@ -9,17 +9,3 @@
 # Trivy детектирует JSON-шаблон в Next.js chunks как утечку секрета.
 # Единственное допустимое исключение — не реальные данные, placeholder.
 secret/gcp-service-account
-
-# DEV-ONLY PACKAGES — not exploitable in production runtime
-# vite, undici, diff, lodash-es, tmp присутствуют в /app/node_modules как
-# devDependencies langfuse. В production не запускаются, HTTP/файловый доступ к ним невозможен.
-# pnpm install этих пакетов приводит к SIGILL (exit 132) в Chainguard node:latest-dev.
-# Исключения будут сняты как только upstream выпустит совместимую версию в npm.
-CVE-2025-62522
-CVE-2025-58751
-CVE-2025-58752
-CVE-2026-22036
-CVE-2025-13465
-CVE-2026-24001
-CVE-2025-54798
-CVE-2026-3449
