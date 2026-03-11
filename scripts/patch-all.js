@@ -4,26 +4,27 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const TARGETS = {
-  'tar':                  '7.5.11',
-  'minimatch':            '10.2.4',
-  'glob':                 '10.5.0',
-  'fast-xml-parser':      '5.3.8',
-  'rollup':               '4.59.0',
-  'serialize-javascript': '7.0.3',
-  'dompurify':            '3.3.2',
-  'ajv':                  '8.18.0',
-  'webpack':              '5.105.4',
-  'qs':                   '6.14.2',
-  'brace-expansion':      '2.0.2',
-  'axios':                '1.13.5',
-  'cross-spawn':          '7.0.6',
-  'basic-ftp':            '5.2.0',
-  'vite':                 '7.0.8',
-  'undici':               '6.23.0',
-  'lodash':               '4.17.23',
-  'lodash-es':            '4.17.23',
-  'diff':                 '8.0.3',
-  '@hono/node-server':    '1.19.10',
+  'tar':                      '7.5.12',
+  'minimatch':                '10.2.4',
+  'glob':                     '10.5.0',
+  'fast-xml-parser':          '5.3.8',
+  'rollup':                   '4.59.0',
+  'serialize-javascript':     '7.0.3',
+  'dompurify':                '3.3.2',
+  'ajv':                      '8.18.0',
+  'webpack':                  '5.105.4',
+  'qs':                       '6.14.2',
+  'brace-expansion':          '2.0.2',
+  'axios':                    '1.13.5',
+  'cross-spawn':              '7.0.6',
+  'basic-ftp':                '5.2.0',
+  'vite':                     '7.0.8',
+  'undici':                   '6.23.0',
+  'lodash':                   '4.17.23',
+  'lodash-es':                '4.17.23',
+  'diff':                     '8.0.3',
+  '@hono/node-server':        '1.19.10',
+  '@smithy/config-resolver':  '3.0.10',
 };
 
 const TARGETS_V9 = { 'minimatch': '9.0.7' };
@@ -57,9 +58,6 @@ function semverGte(a, b) {
   return true;
 }
 
-// Copy src -> dst.
-// KEY FIX: unlink dst file before copyFileSync so overlay FS creates a fresh
-// upper-layer inode instead of trying to overwrite a read-only lower-layer file.
 function cpDir(src, dst) {
   try { execSync('chmod 755 ' + JSON.stringify(path.dirname(dst))); } catch (_) {}
   fs.mkdirSync(dst, { recursive: true });
@@ -74,7 +72,6 @@ function cpDir(src, dst) {
     if (e.isDirectory()) {
       cpDir(s, d);
     } else {
-      // unlink first — forces overlay FS to create new upper-layer inode
       try { fs.unlinkSync(d); } catch (_) {}
       fs.copyFileSync(s, d);
       try { fs.chmodSync(d, 0o644); } catch (_) {}
@@ -134,7 +131,7 @@ console.log('step2 done, dirs patched:', patched);
 var VERSION_PATCHES = [
   ['minimatch', function(v) { return v && v.startsWith('9.'); }, '9.0.7'],
   ['minimatch', null, '10.2.4'],
-  ['tar',       null, '7.5.11'],
+  ['tar',       null, '7.5.12'],
   ['glob', function(v) { return v && v.startsWith('10.'); }, '10.5.0'],
   ['glob', function(v) { return v && v.startsWith('11.'); }, '11.1.0'],
   ['glob', null, '10.5.0'],
@@ -154,7 +151,6 @@ for (var i = 0; i < refreshed.length; i++) {
     var t = resolveVersionPatch(pkg.name, pkg.version);
     if (t && pkg.version !== t) {
       console.log('version-patch', refreshed[i], pkg.version, '->', t);
-      // unlink before write — same overlay FS fix
       try { fs.unlinkSync(refreshed[i]); } catch (_) {}
       pkg.version = t;
       fs.writeFileSync(refreshed[i], JSON.stringify(pkg, null, 2) + '\n');
@@ -194,7 +190,6 @@ if (fs.existsSync(PNPM_DIR)) {
       fs.rmSync(oldPath, { recursive: true, force: true });
     } else {
       console.log('rename-pnpm:', entry, '->', newEntry);
-      // chmod parent (.pnpm dir) so mkdir can create sibling inside it
       try { execSync('chmod 755 ' + JSON.stringify(PNPM_DIR)); } catch (_) {}
       cpDir(oldPath, newPath);
       fs.rmSync(oldPath, { recursive: true, force: true });
