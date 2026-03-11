@@ -31,7 +31,7 @@ RUN set -e; \
     PNPM=/tmp/pnpm-bin/node_modules/.bin/pnpm; \
     PATCHDIR=/tmp/pnpm-patch; \
     mkdir -p "$PATCHDIR" && cd "$PATCHDIR"; \
-    printf '%s' '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.8","rollup":"4.59.0","minimatch":"9.0.7","tar":"7.5.11","serialize-javascript":"7.0.3","@hono/node-server":"1.19.10","dompurify":"3.2.7","ajv":"8.18.0","webpack":"5.99.9","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.13.5","cross-spawn":"7.0.6","basic-ftp":"5.2.0","@smithy/config-resolver":"4.4.0"}}' > package.json; \
+    printf '%s' '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.8","rollup":"4.59.0","minimatch":"9.0.7","tar":"7.5.11","serialize-javascript":"7.0.3","@hono/node-server":"1.19.10","dompurify":"3.2.7","ajv":"8.18.0","webpack":"5.105.4","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.13.5","cross-spawn":"7.0.6","basic-ftp":"5.2.0","@smithy/config-resolver":"4.4.10"}}' > package.json; \
     $PNPM install --no-lockfile --ignore-scripts --shamefully-hoist 2>/dev/null; \
     echo "pnpm install done"
 
