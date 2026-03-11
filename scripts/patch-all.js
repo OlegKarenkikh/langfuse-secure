@@ -4,7 +4,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const TARGETS = {
-  'tar':                      '7.5.12',
+  'tar':                      '7.5.11',
   'minimatch':                '10.2.4',
   'glob':                     '10.5.0',
   'fast-xml-parser':          '5.3.8',
@@ -131,7 +131,7 @@ console.log('step2 done, dirs patched:', patched);
 var VERSION_PATCHES = [
   ['minimatch', function(v) { return v && v.startsWith('9.'); }, '9.0.7'],
   ['minimatch', null, '10.2.4'],
-  ['tar',       null, '7.5.12'],
+  ['tar',       null, '7.5.11'],
   ['glob', function(v) { return v && v.startsWith('10.'); }, '10.5.0'],
   ['glob', function(v) { return v && v.startsWith('11.'); }, '11.1.0'],
   ['glob', null, '10.5.0'],
