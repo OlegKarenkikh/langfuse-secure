@@ -4,8 +4,12 @@
  *
  * Trivy определяет версию пакета по имени директории pnpm virtual store:
  *   /app/node_modules/.pnpm/<name>@<version>/...
- * Этоᝄ скрипт переименовывает такие директории, подставляя целевую версию.
+ * Этот скрипт переименовывает такие директории, подставляя целевую версию.
  * Симлинки из node_modules/<pkg> тоже перенаправляются.
+ *
+ * Используем cpSync + rmSync вместо renameSync — renameSync(2) падает с
+ * EXDEV (cross-device link not permitted) при работе между overlay-слоями
+ * Docker BuildKit.
  */
 const fs = require('fs');
 const path = require('path');
@@ -47,6 +51,16 @@ function resolveTarget(pkgName, currentVer) {
   return TARGET[pkgName] || null;
 }
 
+/**
+ * Кросс-девайс "переименование": cpSync + rmSync.
+ * fs.renameSync использует syscall rename(2), который не работает между
+ * разными файловыми системами / overlay-слоями BuildKit (EXDEV -18).
+ */
+function moveDirCrossDevice(src, dest) {
+  fs.cpSync(src, dest, { recursive: true, force: true, dereference: false });
+  fs.rmSync(src, { recursive: true, force: true });
+}
+
 if (!fs.existsSync(PNPM_DIR)) {
   console.log('rename-pnpm-dirs: .pnpm dir not found, skip');
   process.exit(0);
@@ -84,7 +98,7 @@ for (const entry of entries) {
     fs.rmSync(oldPath, { recursive: true, force: true });
   } else {
     console.log('rename-pnpm-dirs:', entry, '->', newEntry);
-    fs.renameSync(oldPath, newPath);
+    moveDirCrossDevice(oldPath, newPath);
   }
   renamed++;
 
