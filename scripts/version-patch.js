@@ -20,6 +20,7 @@ const patches = {
   'brace-expansion': '2.0.2',
   'cross-spawn': '7.0.6',
   'basic-ftp': '5.2.0',
+  'glob': '10.5.0',
 };
 
 const out = execSync(
