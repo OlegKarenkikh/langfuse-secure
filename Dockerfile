@@ -26,6 +26,23 @@ RUN apt-get update -qq && \
     rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm --quiet 2>/dev/null
 
+# Патчим уязвимые пакеты в системном npm (node_modules/npm/node_modules).
+# Эти пакеты являются зависимостями npm/node-gyp и содержат CVE в версиях,
+# поставляемых с node:22-slim. Несмотря на то что /usr/local/lib/node_modules
+# не копируется в финальный образ, сканирование build-stage Trivy их обнаруживает.
+# Устраняем реальным обновлением до безопасных версий.
+RUN set -e; \
+    NPM_BUNDLED=/usr/local/lib/node_modules/npm; \
+    # tar: CVE-2026-23745, CVE-2026-23950, CVE-2026-24842, CVE-2026-26960, CVE-2026-29786
+    cd "$NPM_BUNDLED" && npm install tar@7.5.11 --no-save --ignore-scripts 2>/dev/null; \
+    # также патчим вложенный tar в node-gyp
+    cd "$NPM_BUNDLED/node_modules/node-gyp" && npm install tar@7.5.11 --no-save --ignore-scripts 2>/dev/null || true; \
+    # glob: CVE-2025-64756
+    cd "$NPM_BUNDLED" && npm install glob@10.5.0 --no-save --ignore-scripts 2>/dev/null; \
+    # minimatch: CVE-2026-26996
+    cd "$NPM_BUNDLED" && npm install minimatch@10.2.3 --no-save --ignore-scripts 2>/dev/null; \
+    echo "npm bundled CVE patches done"
+
 # Скачиваем патч-версии
 RUN set -e; \
     PATCHDIR=/tmp/pnpm-patch; \
