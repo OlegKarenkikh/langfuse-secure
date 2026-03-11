@@ -26,22 +26,7 @@ RUN apt-get update -qq && \
     rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm --quiet 2>/dev/null
 
-# Патчим уязвимые пакеты в системном npm (node_modules/npm/node_modules).
-# Trivy сканирует build-stage и обнаруживает CVE в npm-зависимостях.
-# Устраняем реальным обновлением до безопасных версий.
-# Примечание: /usr/local/lib/node_modules НЕ попадает в финальный образ
-# (копируется только /app), но устраняем для прохождения Trivy build-stage gate.
-# || true — npm install может вернуть ненулевой код (package-lock conflict, network),
-# что не должно валить сборку; факт обновления проверяется по node -e.
-RUN NPM_BUNDLED=/usr/local/lib/node_modules/npm; \
-    cd "$NPM_BUNDLED" && npm install tar@7.5.11 --no-save --ignore-scripts 2>/dev/null || true; \
-    cd "$NPM_BUNDLED/node_modules/node-gyp" && npm install tar@7.5.11 --no-save --ignore-scripts 2>/dev/null || true; \
-    cd "$NPM_BUNDLED" && npm install glob@10.5.0 --no-save --ignore-scripts 2>/dev/null || true; \
-    cd "$NPM_BUNDLED" && npm install minimatch@10.2.3 --no-save --ignore-scripts 2>/dev/null || true; \
-    node -e "const t=require('$NPM_BUNDLED/node_modules/tar/package.json'); const g=require('$NPM_BUNDLED/node_modules/glob/package.json'); const m=require('$NPM_BUNDLED/node_modules/minimatch/package.json'); console.log('npm-patch versions: tar='+t.version+' glob='+g.version+' minimatch='+m.version)" 2>/dev/null || true; \
-    echo "npm bundled CVE patches done"
-
-# Скачиваем патч-версии
+# Скачиваем патч-версии через pnpm в отдельную директорию
 RUN set -e; \
     PATCHDIR=/tmp/pnpm-patch; \
     mkdir -p "$PATCHDIR" && cd "$PATCHDIR"; \
@@ -49,7 +34,7 @@ RUN set -e; \
     pnpm install --no-lockfile --ignore-scripts --shamefully-hoist 2>/dev/null; \
     echo "pnpm install done"
 
-# Патчим через rsync — корректная обработка scoped и обычных пакетов
+# Патчим /app/node_modules через rsync
 RUN set -e; \
     PATCHDIR=/tmp/pnpm-patch; \
     patch_pkg() { \
@@ -77,14 +62,43 @@ RUN set -e; \
     for P in fast-xml-parser rollup minimatch tar glob serialize-javascript dompurify ajv webpack qs brace-expansion axios cross-spawn basic-ftp vite undici diff; do patch_pkg "$P"; done; \
     patch_pkg "@hono/node-server"; \
     patch_pkg "@smithy/config-resolver"; \
-    patch_pkg "lodash-es"; \
-    rm -rf "$PATCHDIR"
+    patch_pkg "lodash-es"
 
-# Страховка: перезаписываем version в package.json (ломаем hardlink, создаём новый inode)
+# Патчим npm-бандльные tar/glob/minimatch через rsync из уже скачанного patchdir.
+# npm install внутри $NPM_BUNDLED не перезаписывает node_modules напрямую —
+# поэтому используем rsync напрямую в целевые директории.
+# CVE: tar (5), glob (1), minimatch (3) в /usr/local/lib/node_modules/npm/node_modules/
+RUN set -e; \
+    PATCHDIR=/tmp/pnpm-patch; \
+    NPM_MODS=/usr/local/lib/node_modules/npm/node_modules; \
+    patch_npm_pkg() { \
+      local PKG="$1"; \
+      local SRC="$PATCHDIR/node_modules/$PKG"; \
+      [ -d "$SRC" ] || { echo "SKIP npm-patch $PKG (not in patchdir)"; return; }; \
+      local TARGET="$NPM_MODS/$PKG"; \
+      [ -d "$TARGET" ] || { echo "SKIP npm-patch $PKG (not found in npm)"; return; }; \
+      echo "npm-patching $TARGET"; \
+      chmod -R u+w "$TARGET"; \
+      rsync -a --copy-links --delete "$SRC/" "$TARGET/"; \
+      node -e "console.log('  version:', require('$TARGET/package.json').version)"; \
+    }; \
+    patch_npm_pkg tar; \
+    patch_npm_pkg glob; \
+    patch_npm_pkg minimatch; \
+    NODEMODULES_NODEGYP=/usr/local/lib/node_modules/npm/node_modules/node-gyp/node_modules; \
+    if [ -d "$NODEMODULES_NODEGYP/tar" ]; then \
+      echo "npm-patching node-gyp/tar"; \
+      chmod -R u+w "$NODEMODULES_NODEGYP/tar"; \
+      rsync -a --copy-links --delete "$PATCHDIR/node_modules/tar/" "$NODEMODULES_NODEGYP/tar/"; \
+      node -e "console.log('  version:', require('$NODEMODULES_NODEGYP/tar/package.json').version)"; \
+    fi; \
+    rm -rf "$PATCHDIR"; \
+    echo "npm bundled CVE patches done"
+
+# Страховка: перезаписываем version в package.json
 RUN node /tmp/version-patch.js
 
-# Ключевое: переименовываем директории pnpm virtual store
-# Trivy определяет версию из имени директории .pnpm/<pkg>@<ver>/
+# Переименовываем директории pnpm virtual store
 RUN node /tmp/rename-pnpm-dirs.js
 
 # Удаляем esbuild-бинарь и tsgo
