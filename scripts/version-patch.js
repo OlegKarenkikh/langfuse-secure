@@ -9,8 +9,8 @@ const patches = [
   ['minimatch', v => v && v.startsWith('9.'), '9.0.7'],
   // minimatch v10.x -> 10.2.4
   ['minimatch', v => !v || !v.startsWith('9.'), '10.2.4'],
-  // tar -> 7.5.12 (CVE-2026-31802, ALL versions, ALL nested paths)
-  ['tar',                    null, '7.5.12'],
+  // tar -> 7.5.11 (CVE-2026-31802, ALL versions, ALL nested paths)
+  ['tar',                    null, '7.5.11'],
   // glob: v10.x -> 10.5.0, v11.x -> 11.1.0
   ['glob', v => v && v.startsWith('10.'), '10.5.0'],
   ['glob', v => v && v.startsWith('11.'), '11.1.0'],
