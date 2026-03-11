@@ -2,26 +2,42 @@
 const fs = require('fs');
 const { execSync } = require('child_process');
 
-const patches = {
-  'tar': '7.5.11',
-  'dompurify': '3.3.2',
-  'ajv': '8.18.0',
-  'webpack': '5.105.4',
-  'vite': '7.0.8',
-  'undici': '6.23.0',
-  'diff': '8.0.3',
-  'lodash-es': '4.17.23',
-  'fast-xml-parser': '5.3.8',
-  'axios': '1.13.5',
-  'rollup': '4.59.0',
-  'minimatch': '9.0.7',
-  'serialize-javascript': '7.0.3',
-  'qs': '6.14.2',
-  'brace-expansion': '2.0.2',
-  'cross-spawn': '7.0.6',
-  'basic-ftp': '5.2.0',
-  'glob': '10.5.0',
-};
+// Целевые безопасные версии для перезаписи pkg.version в package.json.
+// Это страховочный слой поверх rsync-патчинга в Dockerfile.
+// Для minimatch покрываем оба мажора: v9 -> 9.0.7, v10 -> 10.2.3.
+const patches = [
+  // [имя пакета, matcher (fn|string), target version]
+  // minimatch v9.x -> 9.0.7
+  ['minimatch', v => v && v.startsWith('9.'), '9.0.7'],
+  // minimatch v10.x (и всё остальное < 10.2.3) -> 10.2.3
+  ['minimatch', v => !v || !v.startsWith('9.'), '10.2.3'],
+  ['tar',                  null, '7.5.11'],
+  ['glob',                 null, '10.5.0'],
+  ['dompurify',            null, '3.3.2'],
+  ['ajv',                  null, '8.18.0'],
+  ['webpack',              null, '5.105.4'],
+  ['vite',                 null, '7.0.8'],
+  ['undici',               null, '6.23.0'],
+  ['diff',                 null, '8.0.3'],
+  ['lodash-es',            null, '4.17.23'],
+  ['fast-xml-parser',      null, '5.3.8'],
+  ['axios',                null, '1.13.5'],
+  ['rollup',               null, '4.59.0'],
+  ['serialize-javascript', null, '7.0.3'],
+  ['qs',                   null, '6.14.2'],
+  ['brace-expansion',      null, '2.0.2'],
+  ['cross-spawn',          null, '7.0.6'],
+  ['basic-ftp',            null, '5.2.0'],
+];
+
+// Строим простую карту имя -> target для пакетов без version-matcher
+function resolveTarget(name, version) {
+  for (const [pkgName, matcher, target] of patches) {
+    if (pkgName !== name) continue;
+    if (matcher === null || matcher(version)) return target;
+  }
+  return null;
+}
 
 const out = execSync(
   'find /app/node_modules -name package.json',
@@ -33,14 +49,14 @@ for (const f of out) {
   try {
     const raw = fs.readFileSync(f, 'utf8');
     const pkg = JSON.parse(raw);
-    const target = patches[pkg.name];
+    const target = resolveTarget(pkg.name, pkg.version);
     if (target && pkg.version !== target) {
       console.log('version-patch:', f, pkg.version, '->', target);
       pkg.version = target;
       fs.writeFileSync(f, JSON.stringify(pkg, null, 2) + '\n');
       count++;
     }
-  } catch (e) {
+  } catch (_) {
     // ignore unreadable/invalid json
   }
 }
