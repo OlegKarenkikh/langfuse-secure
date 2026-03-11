@@ -15,11 +15,11 @@ const fs = require('fs');
 const path = require('path');
 
 // Целевые версии (имя пакета -> target version)
-// Для minimatch покрываем оба мажора: v9 -> 9.0.7, v10 -> 10.2.3
+// Для minimatch покрываем оба мажора: v9 -> 9.0.7, v10 -> 10.2.4
 const TARGET = {
   'tar':                  '7.5.11',
   'glob':                 '10.5.0',
-  'minimatch':            '10.2.3',  // v9.x обрабатывается отдельно ниже
+  'minimatch':            '10.2.4',  // v9.x обрабатывается отдельно ниже
   'dompurify':            '3.3.2',
   'ajv':                  '8.18.0',
   'webpack':              '5.105.4',
@@ -43,7 +43,7 @@ const TARGET_V9 = { 'minimatch': '9.0.7' };
 const PNPM_DIR = '/app/node_modules/.pnpm';
 
 function resolveTarget(pkgName, currentVer) {
-  // minimatch v9.x патчим до 9.0.7, v10.x и выше -> 10.2.3
+  // minimatch v9.x патчим до 9.0.7, v10.x и выше -> 10.2.4
   if (pkgName === 'minimatch') {
     if (currentVer && currentVer.startsWith('9.')) return TARGET_V9['minimatch'];
     return TARGET['minimatch'];
