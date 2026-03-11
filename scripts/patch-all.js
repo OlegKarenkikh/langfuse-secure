@@ -56,8 +56,10 @@ function semverGte(a, b) {
   return true;
 }
 
+// Copy src -> dst.
+// KEY FIX: unlink dst file before copyFileSync so overlay FS creates a fresh
+// upper-layer inode instead of trying to overwrite a read-only lower-layer file.
 function cpDir(src, dst) {
-  // ensure parent is writable before mkdir
   try { execSync('chmod 755 ' + JSON.stringify(path.dirname(dst))); } catch (_) {}
   fs.mkdirSync(dst, { recursive: true });
   try { fs.chmodSync(dst, 0o755); } catch (_) {}
@@ -68,15 +70,18 @@ function cpDir(src, dst) {
     if (e.isSymbolicLink()) continue;
     var s = path.join(src, e.name);
     var d = path.join(dst, e.name);
-    if (e.isDirectory()) cpDir(s, d);
-    else {
-      try { fs.chmodSync(d, 0o644); } catch (_) {}
+    if (e.isDirectory()) {
+      cpDir(s, d);
+    } else {
+      // unlink first — forces overlay FS to create new upper-layer inode
+      try { fs.unlinkSync(d); } catch (_) {}
       fs.copyFileSync(s, d);
+      try { fs.chmodSync(d, 0o644); } catch (_) {}
     }
   }
 }
 
-// ---- STEP 0: open permissions on entire node_modules via shell (reliable on overlay FS) ----
+// ---- STEP 0: open permissions on entire node_modules via shell ----
 console.log('chmod /app/node_modules ...');
 try {
   execSync('chmod -R 755 ' + APP_NM, { stdio: 'inherit' });
@@ -148,7 +153,8 @@ for (var i = 0; i < refreshed.length; i++) {
     var t = resolveVersionPatch(pkg.name, pkg.version);
     if (t && pkg.version !== t) {
       console.log('version-patch', refreshed[i], pkg.version, '->', t);
-      try { fs.chmodSync(refreshed[i], 0o644); } catch (_) {}
+      // unlink before write — same overlay FS fix
+      try { fs.unlinkSync(refreshed[i]); } catch (_) {}
       pkg.version = t;
       fs.writeFileSync(refreshed[i], JSON.stringify(pkg, null, 2) + '\n');
     }
@@ -187,6 +193,8 @@ if (fs.existsSync(PNPM_DIR)) {
       fs.rmSync(oldPath, { recursive: true, force: true });
     } else {
       console.log('rename-pnpm:', entry, '->', newEntry);
+      // chmod parent (.pnpm dir) so mkdir can create sibling inside it
+      try { execSync('chmod 755 ' + JSON.stringify(PNPM_DIR)); } catch (_) {}
       cpDir(oldPath, newPath);
       fs.rmSync(oldPath, { recursive: true, force: true });
     }
