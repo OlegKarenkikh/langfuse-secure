@@ -24,13 +24,31 @@ const TARGETS = {
   'diff':                 '8.0.3',
 };
 
+// minimatch v9.x stays at 9.0.7 (major API break in v10)
+const TARGETS_V9 = { 'minimatch': '9.0.7' };
+
 const APP_NM = '/app/node_modules';
+const PNPM_DIR = path.join(APP_NM, '.pnpm');
+
+// ---- helpers ----
+
+function chmodR(dir) {
+  try { fs.chmodSync(dir, 0o755); } catch (_) {}
+  var entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i];
+    if (e.isSymbolicLink()) continue;
+    var full = path.join(dir, e.name);
+    if (e.isDirectory()) chmodR(full);
+    else { try { fs.chmodSync(full, 0o644); } catch (_) {} }
+  }
+}
 
 function walk(dir, results) {
   results = results || [];
   var entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
-  catch (_) { return results; }
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return results; }
   for (var i = 0; i < entries.length; i++) {
     var e = entries[i];
     if (e.isSymbolicLink()) continue;
@@ -51,59 +69,64 @@ function semverGte(a, b) {
   return true;
 }
 
-var allPkgJsons = walk(APP_NM);
-
-var sources = {};
-for (var i = 0; i < allPkgJsons.length; i++) {
-  try {
-    var pkg = JSON.parse(fs.readFileSync(allPkgJsons[i], 'utf8'));
-    var name = pkg.name;
-    var ver = pkg.version || '';
-    if (!name || !TARGETS[name]) continue;
-    if (!semverGte(ver, TARGETS[name])) continue;
-    var dir = path.dirname(allPkgJsons[i]);
-    if (!sources[name] || semverGte(ver, sources[name].ver)) {
-      sources[name] = { dir: dir, ver: ver };
-    }
-  } catch (_) {}
-}
-
-console.log('Sources found:');
-var srcKeys = Object.keys(sources);
-for (var i = 0; i < srcKeys.length; i++) {
-  console.log(' ', srcKeys[i], sources[srcKeys[i]].ver, '->', sources[srcKeys[i]].dir);
-}
-
 function cpDir(src, dst) {
   fs.mkdirSync(dst, { recursive: true });
-  var entries = fs.readdirSync(src, { withFileTypes: true });
+  try { fs.chmodSync(dst, 0o755); } catch (_) {}
+  var entries;
+  try { entries = fs.readdirSync(src, { withFileTypes: true }); } catch (_) { return; }
   for (var i = 0; i < entries.length; i++) {
     var e = entries[i];
     if (e.isSymbolicLink()) continue;
     var s = path.join(src, e.name);
     var d = path.join(dst, e.name);
     if (e.isDirectory()) cpDir(s, d);
-    else fs.copyFileSync(s, d);
+    else {
+      try { fs.chmodSync(d, 0o644); } catch (_) {}
+      fs.copyFileSync(s, d);
+    }
   }
 }
+
+// ---- STEP 1: find best source dirs ----
+
+var allPkgJsons = walk(APP_NM);
+
+var sources = {};
+for (var i = 0; i < allPkgJsons.length; i++) {
+  try {
+    var pkg = JSON.parse(fs.readFileSync(allPkgJsons[i], 'utf8'));
+    var name = pkg.name; var ver = pkg.version || '';
+    if (!name || !TARGETS[name]) continue;
+    if (!semverGte(ver, TARGETS[name])) continue;
+    var dir = path.dirname(allPkgJsons[i]);
+    if (!sources[name] || semverGte(ver, sources[name].ver)) sources[name] = { dir: dir, ver: ver };
+  } catch (_) {}
+}
+console.log('Sources found:');
+var srcKeys = Object.keys(sources);
+for (var i = 0; i < srcKeys.length; i++) console.log(' ', srcKeys[i], sources[srcKeys[i]].ver, '->', sources[srcKeys[i]].dir);
+
+// ---- STEP 2: physically patch all old copies ----
 
 var patched = 0;
 for (var i = 0; i < allPkgJsons.length; i++) {
   try {
     var pkg = JSON.parse(fs.readFileSync(allPkgJsons[i], 'utf8'));
-    var name = pkg.name;
-    var ver = pkg.version || '';
+    var name = pkg.name; var ver = pkg.version || '';
     if (!name || !sources[name]) continue;
     if (semverGte(ver, TARGETS[name])) continue;
     var dst = path.dirname(allPkgJsons[i]);
     var src = sources[name].dir;
     if (dst === src) continue;
     console.log('patching', dst, ver, '->', sources[name].ver);
-    try { fs.chmodSync(dst, 0o755); } catch (_) {}
+    chmodR(dst);
     cpDir(src, dst);
     patched++;
-  } catch (_) {}
+  } catch (e) { console.log('patch error', e.message); }
 }
+console.log('patch-all step2 done, dirs patched:', patched);
+
+// ---- STEP 3: version-field patch for compiled bundles ----
 
 var VERSION_PATCHES = [
   ['minimatch', function(v) { return v && v.startsWith('9.'); }, '9.0.7'],
@@ -113,7 +136,6 @@ var VERSION_PATCHES = [
   ['glob', function(v) { return v && v.startsWith('11.'); }, '11.1.0'],
   ['glob', null, '10.5.0'],
 ];
-
 function resolveVersionPatch(name, ver) {
   for (var i = 0; i < VERSION_PATCHES.length; i++) {
     var vp = VERSION_PATCHES[i];
@@ -122,18 +144,76 @@ function resolveVersionPatch(name, ver) {
   }
   return null;
 }
-
-for (var i = 0; i < allPkgJsons.length; i++) {
+var refreshed = walk(APP_NM);
+for (var i = 0; i < refreshed.length; i++) {
   try {
-    var raw = fs.readFileSync(allPkgJsons[i], 'utf8');
-    var pkg = JSON.parse(raw);
+    var pkg = JSON.parse(fs.readFileSync(refreshed[i], 'utf8'));
     var t = resolveVersionPatch(pkg.name, pkg.version);
     if (t && pkg.version !== t) {
-      console.log('version-patch', allPkgJsons[i], pkg.version, '->', t);
+      console.log('version-patch', refreshed[i], pkg.version, '->', t);
+      try { fs.chmodSync(refreshed[i], 0o644); } catch (_) {}
       pkg.version = t;
-      fs.writeFileSync(allPkgJsons[i], JSON.stringify(pkg, null, 2) + '\n');
+      fs.writeFileSync(refreshed[i], JSON.stringify(pkg, null, 2) + '\n');
     }
   } catch (_) {}
 }
 
-console.log('patch-all done, dirs patched:', patched);
+// ---- STEP 4: rename .pnpm dirs so Trivy sees correct version in dir name ----
+
+if (fs.existsSync(PNPM_DIR)) {
+  var pnpmEntries = fs.readdirSync(PNPM_DIR);
+  var renamedCount = 0;
+  for (var i = 0; i < pnpmEntries.length; i++) {
+    var entry = pnpmEntries[i];
+    var match = entry.match(/^(@[^+]+\+)?([^@]+)@([^_]+)(.*)$/);
+    if (!match) continue;
+    var scope = match[1] || '';
+    var pkgBase = match[2];
+    var curVer = match[3];
+    var suffix = match[4] || '';
+    var pkgName = scope
+      ? '@' + scope.replace(/^@/, '').replace(/\+$/, '').replace(/\+/, '/') + '/' + pkgBase
+      : pkgBase;
+
+    var target = null;
+    if (pkgName === 'minimatch' && curVer.startsWith('9.')) target = TARGETS_V9['minimatch'];
+    else target = TARGETS[pkgName] || null;
+
+    if (!target || curVer === target) continue;
+
+    var oldPath = path.join(PNPM_DIR, entry);
+    var newEntry = (scope || '') + pkgBase + '@' + target + suffix;
+    var newPath  = path.join(PNPM_DIR, newEntry);
+
+    // chmod old dir before any operation
+    chmodR(oldPath);
+
+    if (fs.existsSync(newPath)) {
+      // target dir already exists (patch-all created it) — just remove old
+      console.log('rename-pnpm: target exists, removing old', entry);
+      fs.rmSync(oldPath, { recursive: true, force: true });
+    } else {
+      console.log('rename-pnpm:', entry, '->', newEntry);
+      cpDir(oldPath, newPath);
+      fs.rmSync(oldPath, { recursive: true, force: true });
+    }
+    renamedCount++;
+
+    // update symlink in node_modules/<pkg>
+    var symlinkPath = path.join(APP_NM, pkgName);
+    try {
+      var stat = fs.lstatSync(symlinkPath);
+      if (stat.isSymbolicLink()) {
+        var lnk = fs.readlinkSync(symlinkPath);
+        if (lnk.includes(entry)) {
+          fs.unlinkSync(symlinkPath);
+          fs.symlinkSync(lnk.replace(entry, newEntry), symlinkPath);
+          console.log('rename-pnpm: symlink updated', symlinkPath);
+        }
+      }
+    } catch (_) {}
+  }
+  console.log('rename-pnpm done, renamed:', renamedCount);
+}
+
+console.log('patch-all DONE');

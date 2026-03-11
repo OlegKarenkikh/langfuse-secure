@@ -8,10 +8,8 @@ WORKDIR /app
 COPY --from=source /app /app
 COPY scripts/patch-all.js /tmp/patch-all.js
 COPY scripts/version-patch.js /tmp/version-patch.js
-COPY scripts/rename-pnpm-dirs.js /tmp/rename-pnpm-dirs.js
 RUN node /tmp/patch-all.js
 RUN node /tmp/version-patch.js
-RUN node /tmp/rename-pnpm-dirs.js
 RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; find /app -path "*/esbuild/bin/esbuild" -delete 2>/dev/null; find /app -name "esbuild" -type f -perm /111 -delete 2>/dev/null; find /app -name "tsgo" -type f -perm /111 -delete 2>/dev/null; true
 
 # Stage 3: runtime
