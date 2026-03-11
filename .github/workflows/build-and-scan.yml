@@ -9,8 +9,7 @@ on:
     - cron: '0 3 * * *'
 
 env:
-  WEB_IMAGE:    olegkarenkikh/langfuse-secure
-  WORKER_IMAGE: olegkarenkikh/langfuse-worker-secure
+  REPO: olegkarenkikh/langfuse-secure
 
 jobs:
 
@@ -37,7 +36,7 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          tags: ${{ env.WEB_IMAGE }}:${{ github.sha }}
+          tags: ${{ env.REPO }}:${{ github.sha }}
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -45,7 +44,7 @@ jobs:
       - name: Trivy - Table (web)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.WEB_IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.REPO }}:${{ github.sha }}
           format: table
           scanners: vuln,secret
           severity: CRITICAL,HIGH
@@ -58,7 +57,7 @@ jobs:
         if: always()
         continue-on-error: true
         with:
-          image-ref: ${{ env.WEB_IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.REPO }}:${{ github.sha }}
           format: sarif
           output: trivy-web.sarif
           scanners: vuln,secret
@@ -78,7 +77,7 @@ jobs:
         if: always()
         continue-on-error: true
         with:
-          image-ref: ${{ env.WEB_IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.REPO }}:${{ github.sha }}
           format: json
           output: trivy-web.json
           scanners: vuln,secret
@@ -93,11 +92,10 @@ jobs:
           path: trivy-web.json
           retention-days: 30
 
-      # Gate: только vuln — secret false-positive (GCP UI placeholder в Next.js chunks)
       - name: Trivy - Gate (web, fail on CRITICAL/HIGH vuln)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.WEB_IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.REPO }}:${{ github.sha }}
           format: table
           scanners: vuln
           severity: CRITICAL,HIGH
@@ -128,7 +126,7 @@ jobs:
         with:
           context: .
           file: Dockerfile.worker
-          tags: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          tags: ${{ env.REPO }}:worker-${{ github.sha }}
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -136,7 +134,7 @@ jobs:
       - name: Trivy - Table (worker)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.REPO }}:worker-${{ github.sha }}
           format: table
           scanners: vuln,secret
           severity: CRITICAL,HIGH
@@ -149,7 +147,7 @@ jobs:
         if: always()
         continue-on-error: true
         with:
-          image-ref: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.REPO }}:worker-${{ github.sha }}
           format: sarif
           output: trivy-worker.sarif
           scanners: vuln,secret
@@ -169,7 +167,7 @@ jobs:
         if: always()
         continue-on-error: true
         with:
-          image-ref: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.REPO }}:worker-${{ github.sha }}
           format: json
           output: trivy-worker.json
           scanners: vuln,secret
@@ -184,11 +182,10 @@ jobs:
           path: trivy-worker.json
           retention-days: 30
 
-      # Gate: только vuln — secret false-positive в worker тоже исключаем
       - name: Trivy - Gate (worker, fail on CRITICAL/HIGH vuln)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.REPO }}:worker-${{ github.sha }}
           format: table
           scanners: vuln
           severity: CRITICAL,HIGH
@@ -197,7 +194,7 @@ jobs:
           exit-code: '1'
 
   # ===========================================================
-  # Job 3: Push web + worker to Docker Hub
+  # Job 3: Push web + worker to Docker Hub (single repo)
   #   - runs only after BOTH gates pass
   #   - only on merge to main or daily schedule
   # ===========================================================
@@ -226,8 +223,8 @@ jobs:
         run: |
           SHORT_SHA="${GITHUB_SHA::8}"
           DATE="$(date -u +%Y-%m-%d)"
-          WEB_TAGS="${{ env.WEB_IMAGE }}:latest,${{ env.WEB_IMAGE }}:3,${{ env.WEB_IMAGE }}:${SHORT_SHA},${{ env.WEB_IMAGE }}:${DATE}"
-          WORKER_TAGS="${{ env.WORKER_IMAGE }}:latest,${{ env.WORKER_IMAGE }}:3,${{ env.WORKER_IMAGE }}:${SHORT_SHA},${{ env.WORKER_IMAGE }}:${DATE}"
+          WEB_TAGS="${{ env.REPO }}:latest,${{ env.REPO }}:3,${{ env.REPO }}:${SHORT_SHA},${{ env.REPO }}:${DATE}"
+          WORKER_TAGS="${{ env.REPO }}:worker-latest,${{ env.REPO }}:worker-3,${{ env.REPO }}:worker-${SHORT_SHA},${{ env.REPO }}:worker-${DATE}"
           echo "web_tags=${WEB_TAGS}"       >> "$GITHUB_OUTPUT"
           echo "worker_tags=${WORKER_TAGS}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}"     >> "$GITHUB_OUTPUT"
@@ -274,9 +271,8 @@ jobs:
 
       - name: Print digests
         run: |
-          echo "Web    image : ${{ env.WEB_IMAGE }}"
-          echo "Web    tags  : ${{ steps.tags.outputs.web_tags }}"
-          echo "Web    digest: ${{ steps.build-web.outputs.digest }}"
-          echo "Worker image : ${{ env.WORKER_IMAGE }}"
+          echo "Repo         : ${{ env.REPO }}"
+          echo "Web  tags    : ${{ steps.tags.outputs.web_tags }}"
+          echo "Web  digest  : ${{ steps.build-web.outputs.digest }}"
           echo "Worker tags  : ${{ steps.tags.outputs.worker_tags }}"
           echo "Worker digest: ${{ steps.build-worker.outputs.digest }}"
