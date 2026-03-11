@@ -25,33 +25,10 @@ RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends rsync && \
     rm -rf /var/lib/apt/lists/*
 
-# Устанавливаем pnpm И сразу патчим tar в npm-бандле в ОДНОМ RUN-слое.
-# CVE-2026-31802: tar@7.5.10 живёт в /usr/local/lib/node_modules/npm/node_modules/tar
-# и внутри node-gyp. Патчим в том же слое — Trivy не увидит старую версию.
-RUN npm install -g pnpm --quiet 2>/dev/null && \
-    npm install -g npm@latest --quiet 2>/dev/null && \
-    node -e "
-      const fs = require('fs');
-      const path = require('path');
-      const roots = [
-        '/usr/local/lib/node_modules/npm/node_modules',
-        '/usr/local/lib/node_modules/npm/node_modules/node-gyp/node_modules',
-      ];
-      roots.forEach(r => {
-        const p = path.join(r, 'tar', 'package.json');
-        if (!fs.existsSync(p)) return;
-        const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
-        if (pkg.version !== '7.5.11') {
-          console.log('npm-bundle tar patch:', pkg.version, '->', '7.5.11', p);
-          pkg.version = '7.5.11';
-          fs.writeFileSync(p, JSON.stringify(pkg, null, 2));
-        } else {
-          console.log('npm-bundle tar already 7.5.11 at', p);
-        }
-      });
-    "
+# Устанавливаем pnpm
+RUN npm install -g pnpm --quiet 2>/dev/null
 
-# Скачиваем патч-версии через pnpm в отдельную директорию
+# Скачиваем патч-версии через pnpm
 RUN set -e; \
     PATCHDIR=/tmp/pnpm-patch; \
     mkdir -p "$PATCHDIR" && cd "$PATCHDIR"; \
@@ -59,7 +36,7 @@ RUN set -e; \
     pnpm install --no-lockfile --ignore-scripts --shamefully-hoist 2>/dev/null; \
     echo "pnpm install done"
 
-# Патчим /app/node_modules через rsync
+# Патчим через rsync: /app/node_modules + npm-bundle
 RUN set -e; \
     PATCHDIR=/tmp/pnpm-patch; \
     patch_pkg() { \
@@ -82,6 +59,12 @@ RUN set -e; \
           chmod -R u+w "$TARGET" 2>/dev/null || true; \
           rsync -a --copy-links --delete "$SRC/" "$TARGET/"; \
         done; \
+        find /usr/local/lib/node_modules/npm/node_modules -maxdepth 3 -type d -name "$PKG" 2>/dev/null | while read -r TARGET; do \
+          [ -f "$TARGET/package.json" ] || continue; \
+          echo "patching npm-bundle $TARGET"; \
+          chmod -R u+w "$TARGET" 2>/dev/null || true; \
+          rsync -a --copy-links --delete "$SRC/" "$TARGET/"; \
+        done; \
       fi; \
     }; \
     for P in fast-xml-parser rollup minimatch tar glob serialize-javascript dompurify ajv webpack qs brace-expansion axios cross-spawn basic-ftp vite undici lodash tmp diff; do patch_pkg "$P"; done; \
@@ -91,7 +74,7 @@ RUN set -e; \
     patch_pkg "lodash-es"; \
     rm -rf "$PATCHDIR"
 
-# Страховка: перезаписываем version в package.json (включая npm-бандл)
+# Страховка: перезаписываем version в package.json
 RUN node /tmp/version-patch.js
 
 # Переименовываем директории pnpm virtual store
