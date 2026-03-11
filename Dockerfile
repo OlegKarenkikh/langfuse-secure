@@ -4,16 +4,17 @@
 #
 # Stage 1 (source)        — langfuse/langfuse:3 (Next.js standalone)
 # Stage 2 (patcher)       — node:22-slim (Debian bookworm-slim, glibc)
-#                            • npm install патч-версий пакетов
+#                            • pnpm install патч-версий пакетов
 #                            • rsync разворачивает симлинки pnpm store
 #                            • удаляет esbuild + tsgo бинари
-# Stage 3 (runtime)       — almalinux/9-minimal (glibc, RPM-patched, minimal)
+# Stage 3 (runtime)       — node:22-slim (glibc, Debian bookworm-slim)
+#                            • non-root пользователь, чистый /app без dev-слоёв
 # =================================================================
 
 # ---------- stage 1: source ----------
 FROM langfuse/langfuse:3 AS source
 
-# ---------- stage 2: patcher (node:22-slim, glibc — нет SIGILL) ----------
+# ---------- stage 2: patcher (node:22-slim, glibc) ----------
 FROM node:22-slim AS patcher
 
 WORKDIR /app
@@ -23,7 +24,9 @@ COPY --from=source /app /app
 RUN chmod -R u+w /app
 
 # Устанавливаем rsync и pnpm
-RUN apt-get update -qq && apt-get install -y --no-install-recommends rsync && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends rsync && \
+    rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm --quiet 2>/dev/null
 
 # Скачиваем патч-версии всех уязвимых пакетов
@@ -67,21 +70,13 @@ RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
     find /app -name "tsgo" -type f -perm /111 -delete 2>/dev/null; \
     true
 
-# ---------- stage 3: runtime (almalinux/9-minimal) ----------
-FROM almalinux/9-minimal
+# ---------- stage 3: runtime (node:22-slim, чистый non-root) ----------
+FROM node:22-slim
 
 LABEL org.opencontainers.image.title="langfuse-secure" \
       org.opencontainers.image.source="https://github.com/OlegKarenkikh/langfuse-secure" \
       org.opencontainers.image.licenses="MIT"
 
-# Устанавливаем Node.js 22 из NodeSource
-RUN microdnf install -y curl ca-certificates && \
-    curl -fsSL https://rpm.nodesource.com/setup_22.x | bash - && \
-    microdnf install -y nodejs && \
-    microdnf clean all && \
-    rm -rf /var/cache/dnf
-
-# Создаём непривилегированного пользователя
 RUN groupadd -r langfuse && useradd -r -g langfuse -s /sbin/nologin langfuse
 
 WORKDIR /app
