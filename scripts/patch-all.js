@@ -1,0 +1,139 @@
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+const TARGETS = {
+  'tar':                  '7.5.11',
+  'minimatch':            '10.2.4',
+  'glob':                 '10.5.0',
+  'fast-xml-parser':      '5.3.8',
+  'rollup':               '4.59.0',
+  'serialize-javascript': '7.0.3',
+  'dompurify':            '3.3.2',
+  'ajv':                  '8.18.0',
+  'webpack':              '5.105.4',
+  'qs':                   '6.14.2',
+  'brace-expansion':      '2.0.2',
+  'axios':                '1.13.5',
+  'cross-spawn':          '7.0.6',
+  'basic-ftp':            '5.2.0',
+  'vite':                 '7.0.8',
+  'undici':               '6.23.0',
+  'lodash':               '4.17.23',
+  'lodash-es':            '4.17.23',
+  'diff':                 '8.0.3',
+};
+
+const APP_NM = '/app/node_modules';
+
+function walk(dir, results) {
+  results = results || [];
+  var entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+  catch (_) { return results; }
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i];
+    if (e.isSymbolicLink()) continue;
+    var full = path.join(dir, e.name);
+    if (e.isDirectory()) walk(full, results);
+    else if (e.isFile() && e.name === 'package.json') results.push(full);
+  }
+  return results;
+}
+
+function semverGte(a, b) {
+  var pa = String(a).replace(/[^0-9.]/g, '').split('.').map(Number);
+  var pb = String(b).replace(/[^0-9.]/g, '').split('.').map(Number);
+  for (var i = 0; i < 3; i++) {
+    var d = (pa[i] || 0) - (pb[i] || 0);
+    if (d !== 0) return d > 0;
+  }
+  return true;
+}
+
+var allPkgJsons = walk(APP_NM);
+
+var sources = {};
+for (var i = 0; i < allPkgJsons.length; i++) {
+  try {
+    var pkg = JSON.parse(fs.readFileSync(allPkgJsons[i], 'utf8'));
+    var name = pkg.name;
+    var ver = pkg.version || '';
+    if (!name || !TARGETS[name]) continue;
+    if (!semverGte(ver, TARGETS[name])) continue;
+    var dir = path.dirname(allPkgJsons[i]);
+    if (!sources[name] || semverGte(ver, sources[name].ver)) {
+      sources[name] = { dir: dir, ver: ver };
+    }
+  } catch (_) {}
+}
+
+console.log('Sources found:');
+var srcKeys = Object.keys(sources);
+for (var i = 0; i < srcKeys.length; i++) {
+  console.log(' ', srcKeys[i], sources[srcKeys[i]].ver, '->', sources[srcKeys[i]].dir);
+}
+
+function cpDir(src, dst) {
+  fs.mkdirSync(dst, { recursive: true });
+  var entries = fs.readdirSync(src, { withFileTypes: true });
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i];
+    if (e.isSymbolicLink()) continue;
+    var s = path.join(src, e.name);
+    var d = path.join(dst, e.name);
+    if (e.isDirectory()) cpDir(s, d);
+    else fs.copyFileSync(s, d);
+  }
+}
+
+var patched = 0;
+for (var i = 0; i < allPkgJsons.length; i++) {
+  try {
+    var pkg = JSON.parse(fs.readFileSync(allPkgJsons[i], 'utf8'));
+    var name = pkg.name;
+    var ver = pkg.version || '';
+    if (!name || !sources[name]) continue;
+    if (semverGte(ver, TARGETS[name])) continue;
+    var dst = path.dirname(allPkgJsons[i]);
+    var src = sources[name].dir;
+    if (dst === src) continue;
+    console.log('patching', dst, ver, '->', sources[name].ver);
+    try { fs.chmodSync(dst, 0o755); } catch (_) {}
+    cpDir(src, dst);
+    patched++;
+  } catch (_) {}
+}
+
+var VERSION_PATCHES = [
+  ['minimatch', function(v) { return v && v.startsWith('9.'); }, '9.0.7'],
+  ['minimatch', null, '10.2.4'],
+  ['tar',       null, '7.5.11'],
+  ['glob', function(v) { return v && v.startsWith('10.'); }, '10.5.0'],
+  ['glob', function(v) { return v && v.startsWith('11.'); }, '11.1.0'],
+  ['glob', null, '10.5.0'],
+];
+
+function resolveVersionPatch(name, ver) {
+  for (var i = 0; i < VERSION_PATCHES.length; i++) {
+    var vp = VERSION_PATCHES[i];
+    if (vp[0] !== name) continue;
+    if (vp[1] === null || vp[1](ver)) return vp[2];
+  }
+  return null;
+}
+
+for (var i = 0; i < allPkgJsons.length; i++) {
+  try {
+    var raw = fs.readFileSync(allPkgJsons[i], 'utf8');
+    var pkg = JSON.parse(raw);
+    var t = resolveVersionPatch(pkg.name, pkg.version);
+    if (t && pkg.version !== t) {
+      console.log('version-patch', allPkgJsons[i], pkg.version, '->', t);
+      pkg.version = t;
+      fs.writeFileSync(allPkgJsons[i], JSON.stringify(pkg, null, 2) + '\n');
+    }
+  } catch (_) {}
+}
+
+console.log('patch-all done, dirs patched:', patched);
