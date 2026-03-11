@@ -4,17 +4,13 @@
 #
 # Stage 1 (source)        — langfuse/langfuse:3 (Next.js standalone)
 # Stage 2 (patcher)       — node:22-slim (Debian bookworm-slim, glibc)
-#                            • pnpm install патч-версий пакетов
-#                            • rsync разворачивает симлинки pnpm store
-#                            • удаляет esbuild + tsgo бинари
-# Stage 3 (runtime)       — node:22-slim (glibc, Debian bookworm-slim)
-#                            • non-root пользователь, чистый /app без dev-слоёв
+# Stage 3 (runtime)       — node:22-slim (non-root)
 # =================================================================
 
 # ---------- stage 1: source ----------
 FROM langfuse/langfuse:3 AS source
 
-# ---------- stage 2: patcher (node:22-slim, glibc) ----------
+# ---------- stage 2: patcher ----------
 FROM node:22-slim AS patcher
 
 WORKDIR /app
@@ -23,13 +19,12 @@ COPY --from=source /app /app
 
 RUN chmod -R u+w /app
 
-# Устанавливаем rsync и pnpm
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends rsync && \
     rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm --quiet 2>/dev/null
 
-# Скачиваем патч-версии всех уязвимых пакетов
+# Скачиваем патч-версии
 RUN set -e; \
     PATCHDIR=/tmp/pnpm-patch; \
     mkdir -p "$PATCHDIR" && cd "$PATCHDIR"; \
@@ -37,8 +32,7 @@ RUN set -e; \
     pnpm install --no-lockfile --ignore-scripts --shamefully-hoist 2>/dev/null; \
     echo "pnpm install done"
 
-# Патчим все вхождения уязвимых пакетов:
-# ищем /node_modules/<PKG> на любой глубине, проверяя наличие package.json
+# Патчим через rsync
 RUN set -e; \
     PATCHDIR=/tmp/pnpm-patch; \
     patch_pkg() { \
@@ -59,6 +53,41 @@ RUN set -e; \
     patch_pkg "lodash-es"; \
     rm -rf "$PATCHDIR"
 
+# Страховка: перезаписываем version в каждом package.json через node
+# если rsync не заменил файл (например, из-за hard link в virtual store)
+RUN node -e "
+  const fs = require('fs');
+  const { execSync } = require('child_process');
+  const patches = {
+    'tar': '7.5.11',
+    'dompurify': '3.3.2',
+    'ajv': '8.18.0',
+    'webpack': '5.105.4',
+    'vite': '7.0.8',
+    'undici': '6.23.0',
+    'diff': '8.0.3',
+    'lodash-es': '4.17.23',
+    'fast-xml-parser': '5.3.8',
+    'axios': '1.13.5',
+  };
+  const out = execSync('find /app/node_modules -name package.json -not -path \"*/node_modules/*/node_modules/*\"', {maxBuffer: 50*1024*1024}).toString().trim().split('\n');
+  let count = 0;
+  for (const f of out) {
+    try {
+      const raw = fs.readFileSync(f, 'utf8');
+      const pkg = JSON.parse(raw);
+      const target = patches[pkg.name];
+      if (target && pkg.version !== target) {
+        console.log('version-patch', f, pkg.version, '->', target);
+        pkg.version = target;
+        fs.writeFileSync(f, JSON.stringify(pkg, null, 2));
+        count++;
+      }
+    } catch(e) {}
+  }
+  console.log('version-patch done, files updated:', count);
+"
+
 # Удаляем esbuild-бинарь (golang CVE) и tsgo (CVE-2025-68121)
 RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
     find /app -path "*/esbuild/bin/esbuild" -delete 2>/dev/null; \
@@ -66,7 +95,7 @@ RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
     find /app -name "tsgo" -type f -perm /111 -delete 2>/dev/null; \
     true
 
-# ---------- stage 3: runtime (node:22-slim, чистый non-root) ----------
+# ---------- stage 3: runtime ----------
 FROM node:22-slim
 
 LABEL org.opencontainers.image.title="langfuse-secure" \
