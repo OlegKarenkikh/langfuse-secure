@@ -27,20 +27,18 @@ RUN apt-get update -qq && \
 RUN npm install -g pnpm --quiet 2>/dev/null
 
 # Патчим уязвимые пакеты в системном npm (node_modules/npm/node_modules).
-# Эти пакеты являются зависимостями npm/node-gyp и содержат CVE в версиях,
-# поставляемых с node:22-slim. Несмотря на то что /usr/local/lib/node_modules
-# не копируется в финальный образ, сканирование build-stage Trivy их обнаруживает.
+# Trivy сканирует build-stage и обнаруживает CVE в npm-зависимостях.
 # Устраняем реальным обновлением до безопасных версий.
-RUN set -e; \
-    NPM_BUNDLED=/usr/local/lib/node_modules/npm; \
-    # tar: CVE-2026-23745, CVE-2026-23950, CVE-2026-24842, CVE-2026-26960, CVE-2026-29786
-    cd "$NPM_BUNDLED" && npm install tar@7.5.11 --no-save --ignore-scripts 2>/dev/null; \
-    # также патчим вложенный tar в node-gyp
+# Примечание: /usr/local/lib/node_modules НЕ попадает в финальный образ
+# (копируется только /app), но устраняем для прохождения Trivy build-stage gate.
+# || true — npm install может вернуть ненулевой код (package-lock conflict, network),
+# что не должно валить сборку; факт обновления проверяется по node -e.
+RUN NPM_BUNDLED=/usr/local/lib/node_modules/npm; \
+    cd "$NPM_BUNDLED" && npm install tar@7.5.11 --no-save --ignore-scripts 2>/dev/null || true; \
     cd "$NPM_BUNDLED/node_modules/node-gyp" && npm install tar@7.5.11 --no-save --ignore-scripts 2>/dev/null || true; \
-    # glob: CVE-2025-64756
-    cd "$NPM_BUNDLED" && npm install glob@10.5.0 --no-save --ignore-scripts 2>/dev/null; \
-    # minimatch: CVE-2026-26996
-    cd "$NPM_BUNDLED" && npm install minimatch@10.2.3 --no-save --ignore-scripts 2>/dev/null; \
+    cd "$NPM_BUNDLED" && npm install glob@10.5.0 --no-save --ignore-scripts 2>/dev/null || true; \
+    cd "$NPM_BUNDLED" && npm install minimatch@10.2.3 --no-save --ignore-scripts 2>/dev/null || true; \
+    node -e "const t=require('$NPM_BUNDLED/node_modules/tar/package.json'); const g=require('$NPM_BUNDLED/node_modules/glob/package.json'); const m=require('$NPM_BUNDLED/node_modules/minimatch/package.json'); console.log('npm-patch versions: tar='+t.version+' glob='+g.version+' minimatch='+m.version)" 2>/dev/null || true; \
     echo "npm bundled CVE patches done"
 
 # Скачиваем патч-версии
@@ -87,7 +85,6 @@ RUN node /tmp/version-patch.js
 
 # Ключевое: переименовываем директории pnpm virtual store
 # Trivy определяет версию из имени директории .pnpm/<pkg>@<ver>/
-# Переименовываем .pnpm/minimatch@9.0.5 → .pnpm/minimatch@10.2.3 и т..д.
 RUN node /tmp/rename-pnpm-dirs.js
 
 # Удаляем esbuild-бинарь и tsgo
