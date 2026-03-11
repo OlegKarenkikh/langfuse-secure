@@ -4,15 +4,17 @@ const { execSync } = require('child_process');
 
 // Целевые безопасные версии для перезаписи pkg.version в package.json.
 // Это страховочный слой поверх rsync-патчинга в Dockerfile.
-// Для minimatch покрываем оба мажора: v9 -> 9.0.7, v10 -> 10.2.3.
 const patches = [
-  // [имя пакета, matcher (fn|string), target version]
   // minimatch v9.x -> 9.0.7
   ['minimatch', v => v && v.startsWith('9.'), '9.0.7'],
-  // minimatch v10.x (и всё остальное < 10.2.3) -> 10.2.3
-  ['minimatch', v => !v || !v.startsWith('9.'), '10.2.3'],
+  // minimatch v10.x -> 10.2.4  (was incorrectly 10.2.3)
+  ['minimatch', v => !v || !v.startsWith('9.'), '10.2.4'],
+  // tar -> 7.5.11 (all versions)
   ['tar',                  null, '7.5.11'],
-  ['glob',                 null, '10.5.0'],
+  // glob: v10.x -> 10.5.0, v11.x stays or bumped to 11.1.0
+  ['glob', v => v && v.startsWith('10.'), '10.5.0'],
+  ['glob', v => v && v.startsWith('11.'), '11.1.0'],
+  ['glob', v => !v || (!v.startsWith('10.') && !v.startsWith('11.')), '10.5.0'],
   ['dompurify',            null, '3.3.2'],
   ['ajv',                  null, '8.18.0'],
   ['webpack',              null, '5.105.4'],
@@ -30,7 +32,6 @@ const patches = [
   ['basic-ftp',            null, '5.2.0'],
 ];
 
-// Строим простую карту имя -> target для пакетов без version-matcher
 function resolveTarget(name, version) {
   for (const [pkgName, matcher, target] of patches) {
     if (pkgName !== name) continue;
@@ -39,13 +40,26 @@ function resolveTarget(name, version) {
   return null;
 }
 
-const out = execSync(
-  'find /app/node_modules -name package.json',
-  { maxBuffer: 100 * 1024 * 1024 }
-).toString().trim().split('\n').filter(Boolean);
+// Search app node_modules AND npm bundled node_modules
+const searchRoots = [
+  '/app/node_modules',
+  '/usr/local/lib/node_modules/npm/node_modules',
+];
+
+let allFiles = [];
+for (const root of searchRoots) {
+  if (!fs.existsSync(root)) continue;
+  try {
+    const found = execSync(
+      `find ${root} -name package.json`,
+      { maxBuffer: 100 * 1024 * 1024 }
+    ).toString().trim().split('\n').filter(Boolean);
+    allFiles = allFiles.concat(found);
+  } catch (_) {}
+}
 
 let count = 0;
-for (const f of out) {
+for (const f of allFiles) {
   try {
     const raw = fs.readFileSync(f, 'utf8');
     const pkg = JSON.parse(raw);

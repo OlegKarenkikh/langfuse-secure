@@ -6,20 +6,15 @@
  *   /app/node_modules/.pnpm/<name>@<version>/...
  * Этот скрипт переименовывает такие директории, подставляя целевую версию.
  * Симлинки из node_modules/<pkg> тоже перенаправляются.
- *
- * Используем cpSync + rmSync вместо renameSync — renameSync(2) падает с
- * EXDEV (cross-device link not permitted) при работе между overlay-слоями
- * Docker BuildKit.
  */
 const fs = require('fs');
 const path = require('path');
 
 // Целевые версии (имя пакета -> target version)
-// Для minimatch покрываем оба мажора: v9 -> 9.0.7, v10 -> 10.2.4
 const TARGET = {
   'tar':                  '7.5.11',
   'glob':                 '10.5.0',
-  'minimatch':            '10.2.4',  // v9.x обрабатывается отдельно ниже
+  'minimatch':            '10.2.4',
   'dompurify':            '3.3.2',
   'ajv':                  '8.18.0',
   'webpack':              '5.105.4',
@@ -37,13 +32,12 @@ const TARGET = {
   'basic-ftp':            '5.2.0',
 };
 
-// minimatch v9.x -> 9.0.7 (отдельный случай)
+// minimatch v9.x -> 9.0.7
 const TARGET_V9 = { 'minimatch': '9.0.7' };
 
 const PNPM_DIR = '/app/node_modules/.pnpm';
 
 function resolveTarget(pkgName, currentVer) {
-  // minimatch v9.x патчим до 9.0.7, v10.x и выше -> 10.2.4
   if (pkgName === 'minimatch') {
     if (currentVer && currentVer.startsWith('9.')) return TARGET_V9['minimatch'];
     return TARGET['minimatch'];
@@ -51,11 +45,6 @@ function resolveTarget(pkgName, currentVer) {
   return TARGET[pkgName] || null;
 }
 
-/**
- * Кросс-девайс "переименование": cpSync + rmSync.
- * fs.renameSync использует syscall rename(2), который не работает между
- * разными файловыми системами / overlay-слоями BuildKit (EXDEV -18).
- */
 function moveDirCrossDevice(src, dest) {
   fs.cpSync(src, dest, { recursive: true, force: true, dereference: false });
   fs.rmSync(src, { recursive: true, force: true });
@@ -70,16 +59,13 @@ const entries = fs.readdirSync(PNPM_DIR);
 let renamed = 0;
 
 for (const entry of entries) {
-  // Формат: <name>@<ver> или @<scope>+<name>@<ver>
-  // Примеры: minimatch@9.0.5  |  @hono+node-server@1.19.0
   const match = entry.match(/^(@[^+]+\+)?([^@]+)@(.+)$/);
   if (!match) continue;
 
-  const scope  = match[1] || '';   // '@hono+' or ''
-  const name   = match[2];         // 'minimatch' or 'node-server'
-  const curVer = match[3];         // '9.0.5'
+  const scope  = match[1] || '';
+  const name   = match[2];
+  const curVer = match[3];
 
-  // Сборка полного имени пакета
   const pkgName = scope
     ? '@' + scope.replace(/^@/, '').replace(/\+$/, '').replace(/\+/, '/') + '/' + name
     : name;
@@ -88,12 +74,10 @@ for (const entry of entries) {
   if (!target || curVer === target) continue;
 
   const oldPath = path.join(PNPM_DIR, entry);
-  // Новое имя: заменяем только часть версии в имени директории
   const newEntry = entry.replace('@' + curVer, '@' + target);
   const newPath  = path.join(PNPM_DIR, newEntry);
 
   if (fs.existsSync(newPath)) {
-    // Целевая директория уже есть — удаляем старую
     console.log('rename-pnpm-dirs: target exists, removing old', entry);
     fs.rmSync(oldPath, { recursive: true, force: true });
   } else {
@@ -102,7 +86,7 @@ for (const entry of entries) {
   }
   renamed++;
 
-  // Обновляем симлинк в node_modules/<pkg> если он указывал на старую директорию
+  // Обновляем симлинк в node_modules/<pkg>
   const symlinkPath = pkgName.includes('/')
     ? path.join('/app/node_modules', pkgName)
     : path.join('/app/node_modules', name);
