@@ -4,6 +4,7 @@ FROM langfuse/langfuse-worker:3 AS source
 
 # Stage 2: patcher (Chainguard - no npm/apt/rsync, zero CVE)
 FROM cgr.dev/chainguard/node:latest AS patcher
+USER root
 WORKDIR /app
 COPY --from=source /app /app
 COPY scripts/patch-all.js /tmp/patch-all.js
