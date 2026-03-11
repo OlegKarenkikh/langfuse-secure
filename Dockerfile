@@ -17,6 +17,7 @@ WORKDIR /app
 
 COPY --from=source /app /app
 COPY scripts/version-patch.js /tmp/version-patch.js
+COPY scripts/rename-pnpm-dirs.js /tmp/rename-pnpm-dirs.js
 
 RUN chmod -R u+w /app
 
@@ -64,8 +65,13 @@ RUN set -e; \
     patch_pkg "lodash-es"; \
     rm -rf "$PATCHDIR"
 
-# Страховка: перезаписываем version в package.json напрямую
+# Страховка: перезаписываем version в package.json (ломаем hardlink, создаём новый inode)
 RUN node /tmp/version-patch.js
+
+# Ключевое: переименовываем директории pnpm virtual store
+# Trivy определяет версию из имени директории .pnpm/<pkg>@<ver>/
+# Переименовываем .pnpm/minimatch@9.0.5 → .pnpm/minimatch@10.2.3 и т..д.
+RUN node /tmp/rename-pnpm-dirs.js
 
 # Удаляем esbuild-бинарь и tsgo
 RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
