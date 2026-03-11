@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const TARGETS = {
   'tar':                  '7.5.11',
@@ -31,31 +32,6 @@ const PNPM_DIR = path.join(APP_NM, '.pnpm');
 
 // ---- helpers ----
 
-// chmod only directories (fast pass: just dirs, not files)
-function chmodDirs(dir) {
-  try { fs.chmodSync(dir, 0o755); } catch (_) {}
-  var entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
-  for (var i = 0; i < entries.length; i++) {
-    var e = entries[i];
-    if (e.isSymbolicLink() || !e.isDirectory()) continue;
-    chmodDirs(path.join(dir, e.name));
-  }
-}
-
-function chmodR(dir) {
-  try { fs.chmodSync(dir, 0o755); } catch (_) {}
-  var entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
-  for (var i = 0; i < entries.length; i++) {
-    var e = entries[i];
-    if (e.isSymbolicLink()) continue;
-    var full = path.join(dir, e.name);
-    if (e.isDirectory()) chmodR(full);
-    else { try { fs.chmodSync(full, 0o644); } catch (_) {} }
-  }
-}
-
 function walk(dir, results) {
   results = results || [];
   var entries;
@@ -81,6 +57,8 @@ function semverGte(a, b) {
 }
 
 function cpDir(src, dst) {
+  // ensure parent is writable before mkdir
+  try { execSync('chmod 755 ' + JSON.stringify(path.dirname(dst))); } catch (_) {}
   fs.mkdirSync(dst, { recursive: true });
   try { fs.chmodSync(dst, 0o755); } catch (_) {}
   var entries;
@@ -98,10 +76,14 @@ function cpDir(src, dst) {
   }
 }
 
-// ---- STEP 0: open permissions on entire node_modules FIRST ----
+// ---- STEP 0: open permissions on entire node_modules via shell (reliable on overlay FS) ----
 console.log('chmod /app/node_modules ...');
-chmodDirs(APP_NM);
-console.log('chmod done');
+try {
+  execSync('chmod -R 755 ' + APP_NM, { stdio: 'inherit' });
+  console.log('chmod done');
+} catch (e) {
+  console.log('chmod warning (continuing):', e.message);
+}
 
 // ---- STEP 1: find best source dirs ----
 
