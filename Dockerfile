@@ -37,7 +37,8 @@ RUN set -e; \
     pnpm install --no-lockfile --ignore-scripts --shamefully-hoist 2>/dev/null; \
     echo "pnpm install done"
 
-# Патчим все вхождения уязвимых пакетов через rsync --copy-links --delete
+# Патчим все вхождения уязвимых пакетов:
+# ищем /node_modules/<PKG> на любой глубине, проверяя наличие package.json
 RUN set -e; \
     PATCHDIR=/tmp/pnpm-patch; \
     patch_pkg() { \
@@ -45,17 +46,12 @@ RUN set -e; \
       local SRC="$PATCHDIR/node_modules/$PKG"; \
       [ -d "$SRC" ] || { echo "SKIP $PKG (not in patchdir)"; return; }; \
       local BASENAME; BASENAME=$(basename "$PKG"); \
-      find /app/node_modules/.pnpm -mindepth 3 -maxdepth 4 -type d -name "$BASENAME" 2>/dev/null | while read -r TARGET; do \
+      find /app/node_modules -type d -name "$BASENAME" 2>/dev/null | while read -r TARGET; do \
+        [ -f "$TARGET/package.json" ] || continue; \
         echo "patching $TARGET"; \
         chmod -R u+w "$TARGET" 2>/dev/null || true; \
         rsync -a --copy-links --delete "$SRC/" "$TARGET/"; \
       done; \
-      local DIRECT="/app/node_modules/$PKG"; \
-      if [ -d "$DIRECT" ]; then \
-        echo "patching direct $DIRECT"; \
-        chmod -R u+w "$DIRECT" 2>/dev/null || true; \
-        rsync -a --copy-links --delete "$SRC/" "$DIRECT/"; \
-      fi; \
     }; \
     for P in fast-xml-parser rollup minimatch tar serialize-javascript dompurify ajv webpack qs brace-expansion axios cross-spawn basic-ftp vite undici diff; do patch_pkg "$P"; done; \
     patch_pkg "@hono/node-server"; \
