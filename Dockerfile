@@ -4,7 +4,7 @@
 #
 # Stage 1 (source)        — langfuse/langfuse:3 (Next.js standalone)
 # Stage 2 (patcher)       — node:22-slim (Debian bookworm-slim, glibc)
-# Stage 3 (runtime)       — node:22-slim (non-root)
+# Stage 3 (runtime)       — node:22-slim (non-root, npm removed)
 # =================================================================
 
 # ---------- stage 1: source ----------
@@ -62,38 +62,8 @@ RUN set -e; \
     for P in fast-xml-parser rollup minimatch tar glob serialize-javascript dompurify ajv webpack qs brace-expansion axios cross-spawn basic-ftp vite undici diff; do patch_pkg "$P"; done; \
     patch_pkg "@hono/node-server"; \
     patch_pkg "@smithy/config-resolver"; \
-    patch_pkg "lodash-es"
-
-# Патчим npm-бандльные tar/glob/minimatch через rsync из уже скачанного patchdir.
-# npm install внутри $NPM_BUNDLED не перезаписывает node_modules напрямую —
-# поэтому используем rsync напрямую в целевые директории.
-# CVE: tar (5), glob (1), minimatch (3) в /usr/local/lib/node_modules/npm/node_modules/
-RUN set -e; \
-    PATCHDIR=/tmp/pnpm-patch; \
-    NPM_MODS=/usr/local/lib/node_modules/npm/node_modules; \
-    patch_npm_pkg() { \
-      local PKG="$1"; \
-      local SRC="$PATCHDIR/node_modules/$PKG"; \
-      [ -d "$SRC" ] || { echo "SKIP npm-patch $PKG (not in patchdir)"; return; }; \
-      local TARGET="$NPM_MODS/$PKG"; \
-      [ -d "$TARGET" ] || { echo "SKIP npm-patch $PKG (not found in npm)"; return; }; \
-      echo "npm-patching $TARGET"; \
-      chmod -R u+w "$TARGET"; \
-      rsync -a --copy-links --delete "$SRC/" "$TARGET/"; \
-      node -e "console.log('  version:', require('$TARGET/package.json').version)"; \
-    }; \
-    patch_npm_pkg tar; \
-    patch_npm_pkg glob; \
-    patch_npm_pkg minimatch; \
-    NODEMODULES_NODEGYP=/usr/local/lib/node_modules/npm/node_modules/node-gyp/node_modules; \
-    if [ -d "$NODEMODULES_NODEGYP/tar" ]; then \
-      echo "npm-patching node-gyp/tar"; \
-      chmod -R u+w "$NODEMODULES_NODEGYP/tar"; \
-      rsync -a --copy-links --delete "$PATCHDIR/node_modules/tar/" "$NODEMODULES_NODEGYP/tar/"; \
-      node -e "console.log('  version:', require('$NODEMODULES_NODEGYP/tar/package.json').version)"; \
-    fi; \
-    rm -rf "$PATCHDIR"; \
-    echo "npm bundled CVE patches done"
+    patch_pkg "lodash-es"; \
+    rm -rf "$PATCHDIR"
 
 # Страховка: перезаписываем version в package.json
 RUN node /tmp/version-patch.js
@@ -116,6 +86,15 @@ LABEL org.opencontainers.image.title="langfuse-secure" \
       org.opencontainers.image.licenses="MIT"
 
 RUN groupadd -r langfuse && useradd -r -g langfuse -s /sbin/nologin langfuse
+
+# Удаляем npm из runtime-образа: приложение запускается через node напрямую,
+# npm в рантайме не нужен. Это устраняет весь класс npm-bundled CVE
+# (glob, minimatch, tar и др.) без каких-либо обходных решений.
+RUN npm uninstall -g npm 2>/dev/null || true; \
+    rm -rf /usr/local/lib/node_modules/npm \
+           /usr/local/bin/npm \
+           /usr/local/bin/npx; \
+    true
 
 WORKDIR /app
 

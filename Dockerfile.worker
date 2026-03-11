@@ -4,7 +4,7 @@
 #
 # Stage 1 (source)        — langfuse/langfuse-worker:3
 # Stage 2 (patcher)       — node:22-slim (Debian bookworm-slim, glibc)
-# Stage 3 (runtime)       — node:22-slim (non-root)
+# Stage 3 (runtime)       — node:22-slim (non-root, npm removed)
 # =================================================================
 
 # ---------- stage 1: source ----------
@@ -29,7 +29,7 @@ RUN npm install -g pnpm --quiet 2>/dev/null
 RUN set -e; \
     PATCHDIR=/tmp/pnpm-patch; \
     mkdir -p "$PATCHDIR" && cd "$PATCHDIR"; \
-    printf '%s' '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.8","rollup":"4.59.0","minimatch":"9.0.7","tar":"7.5.11","serialize-javascript":"7.0.3","@hono/node-server":"1.19.10","dompurify":"3.3.2","ajv":"8.18.0","webpack":"5.105.4","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.13.5","cross-spawn":"7.0.6","basic-ftp":"5.2.0","@smithy/config-resolver":"4.4.10","vite":"7.0.8","undici":"6.23.0","lodash-es":"4.17.23","diff":"8.0.3"}}' > package.json; \
+    printf '%s' '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.8","rollup":"4.59.0","minimatch":"10.2.4","tar":"7.5.11","serialize-javascript":"7.0.3","@hono/node-server":"1.19.10","dompurify":"3.3.2","ajv":"8.18.0","webpack":"5.105.4","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.13.5","cross-spawn":"7.0.6","basic-ftp":"5.2.0","@smithy/config-resolver":"4.4.10","vite":"7.0.8","undici":"6.23.0","lodash-es":"4.17.23","diff":"8.0.3"}}' > package.json; \
     pnpm install --no-lockfile --ignore-scripts --shamefully-hoist 2>/dev/null; \
     echo "pnpm install done"
 
@@ -72,6 +72,15 @@ LABEL org.opencontainers.image.title="langfuse-worker-secure" \
       org.opencontainers.image.licenses="MIT"
 
 RUN groupadd -r langfuse && useradd -r -g langfuse -s /sbin/nologin langfuse
+
+# Удаляем npm из runtime-образа: worker запускается через node напрямую,
+# npm в рантайме не нужен. Это устраняет весь класс npm-bundled CVE
+# (glob, minimatch, tar и др.) без каких-либо обходных решений.
+RUN npm uninstall -g npm 2>/dev/null || true; \
+    rm -rf /usr/local/lib/node_modules/npm \
+           /usr/local/bin/npm \
+           /usr/local/bin/npx; \
+    true
 
 WORKDIR /app
 
