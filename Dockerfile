@@ -25,20 +25,14 @@ RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends rsync && \
     rm -rf /var/lib/apt/lists/*
 
-# Устанавливаем pnpm
-RUN npm install -g pnpm --quiet 2>/dev/null
-
-# Скачиваем патч-версии через pnpm
+# Устанавливаем pnpm + скачиваем патч-версии + ресинхронизируем через rsync — ВСЕ в одном RUN-слое.
+# Trivy не увидит старый tar, т.к. патч происходит в том же слое, что и npm install -g pnpm.
 RUN set -e; \
+    npm install -g pnpm --quiet 2>/dev/null; \
     PATCHDIR=/tmp/pnpm-patch; \
     mkdir -p "$PATCHDIR" && cd "$PATCHDIR"; \
     printf '%s' '{"name":"cve-patcher","version":"1.0.0","dependencies":{"fast-xml-parser":"5.3.8","rollup":"4.59.0","minimatch":"10.2.4","tar":"7.5.11","glob":"10.5.0","serialize-javascript":"7.0.3","@hono/node-server":"1.19.10","dompurify":"3.3.2","ajv":"8.18.0","webpack":"5.105.4","qs":"6.14.2","brace-expansion":"2.0.2","axios":"1.13.5","cross-spawn":"7.0.6","basic-ftp":"5.2.0","@smithy/config-resolver":"4.4.10","vite":"7.0.8","undici":"6.23.0","lodash-es":"4.17.23","lodash":"4.17.23","tmp":"0.2.4","@tootallnate/once":"3.0.1","diff":"8.0.3"}}' > package.json; \
     pnpm install --no-lockfile --ignore-scripts --shamefully-hoist 2>/dev/null; \
-    echo "pnpm install done"
-
-# Патчим через rsync: /app/node_modules + npm-bundle
-RUN set -e; \
-    PATCHDIR=/tmp/pnpm-patch; \
     patch_pkg() { \
       local PKG="$1"; \
       local SRC="$PATCHDIR/node_modules/$PKG"; \
@@ -91,7 +85,6 @@ RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
 RUN chown -R 65532:65532 /app
 
 # ---------- stage 3: runtime ----------
-# Chainguard Node (Wolfi-based): ~0 OS CVE, no npm, no shell, non-root by default
 FROM cgr.dev/chainguard/node:latest
 
 LABEL org.opencontainers.image.title="langfuse-secure" \
