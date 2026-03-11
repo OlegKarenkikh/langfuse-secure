@@ -24,13 +24,24 @@ const TARGETS = {
   'diff':                 '8.0.3',
 };
 
-// minimatch v9.x stays at 9.0.7 (major API break in v10)
 const TARGETS_V9 = { 'minimatch': '9.0.7' };
 
 const APP_NM = '/app/node_modules';
 const PNPM_DIR = path.join(APP_NM, '.pnpm');
 
 // ---- helpers ----
+
+// chmod only directories (fast pass: just dirs, not files)
+function chmodDirs(dir) {
+  try { fs.chmodSync(dir, 0o755); } catch (_) {}
+  var entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i];
+    if (e.isSymbolicLink() || !e.isDirectory()) continue;
+    chmodDirs(path.join(dir, e.name));
+  }
+}
 
 function chmodR(dir) {
   try { fs.chmodSync(dir, 0o755); } catch (_) {}
@@ -87,6 +98,11 @@ function cpDir(src, dst) {
   }
 }
 
+// ---- STEP 0: open permissions on entire node_modules FIRST ----
+console.log('chmod /app/node_modules ...');
+chmodDirs(APP_NM);
+console.log('chmod done');
+
 // ---- STEP 1: find best source dirs ----
 
 var allPkgJsons = walk(APP_NM);
@@ -119,12 +135,11 @@ for (var i = 0; i < allPkgJsons.length; i++) {
     var src = sources[name].dir;
     if (dst === src) continue;
     console.log('patching', dst, ver, '->', sources[name].ver);
-    chmodR(dst);
     cpDir(src, dst);
     patched++;
   } catch (e) { console.log('patch error', e.message); }
 }
-console.log('patch-all step2 done, dirs patched:', patched);
+console.log('step2 done, dirs patched:', patched);
 
 // ---- STEP 3: version-field patch for compiled bundles ----
 
@@ -157,6 +172,7 @@ for (var i = 0; i < refreshed.length; i++) {
     }
   } catch (_) {}
 }
+console.log('step3 done');
 
 // ---- STEP 4: rename .pnpm dirs so Trivy sees correct version in dir name ----
 
@@ -167,10 +183,10 @@ if (fs.existsSync(PNPM_DIR)) {
     var entry = pnpmEntries[i];
     var match = entry.match(/^(@[^+]+\+)?([^@]+)@([^_]+)(.*)$/);
     if (!match) continue;
-    var scope = match[1] || '';
+    var scope  = match[1] || '';
     var pkgBase = match[2];
-    var curVer = match[3];
-    var suffix = match[4] || '';
+    var curVer  = match[3];
+    var suffix  = match[4] || '';
     var pkgName = scope
       ? '@' + scope.replace(/^@/, '').replace(/\+$/, '').replace(/\+/, '/') + '/' + pkgBase
       : pkgBase;
@@ -178,18 +194,13 @@ if (fs.existsSync(PNPM_DIR)) {
     var target = null;
     if (pkgName === 'minimatch' && curVer.startsWith('9.')) target = TARGETS_V9['minimatch'];
     else target = TARGETS[pkgName] || null;
-
     if (!target || curVer === target) continue;
 
-    var oldPath = path.join(PNPM_DIR, entry);
+    var oldPath  = path.join(PNPM_DIR, entry);
     var newEntry = (scope || '') + pkgBase + '@' + target + suffix;
     var newPath  = path.join(PNPM_DIR, newEntry);
 
-    // chmod old dir before any operation
-    chmodR(oldPath);
-
     if (fs.existsSync(newPath)) {
-      // target dir already exists (patch-all created it) — just remove old
       console.log('rename-pnpm: target exists, removing old', entry);
       fs.rmSync(oldPath, { recursive: true, force: true });
     } else {
@@ -199,7 +210,6 @@ if (fs.existsSync(PNPM_DIR)) {
     }
     renamedCount++;
 
-    // update symlink in node_modules/<pkg>
     var symlinkPath = path.join(APP_NM, pkgName);
     try {
       var stat = fs.lstatSync(symlinkPath);
@@ -213,7 +223,7 @@ if (fs.existsSync(PNPM_DIR)) {
       }
     } catch (_) {}
   }
-  console.log('rename-pnpm done, renamed:', renamedCount);
+  console.log('step4 rename-pnpm done, renamed:', renamedCount);
 }
 
 console.log('patch-all DONE');
