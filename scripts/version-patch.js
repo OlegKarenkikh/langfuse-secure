@@ -33,6 +33,7 @@ const patches = [
   ['cross-spawn',          null, '7.0.6'],
   ['basic-ftp',            null, '5.2.0'],
   ['@tootallnate/once',    null, '3.0.1'],
+  ['@hono/node-server',    null, '1.19.10'],
 ];
 
 function resolveTarget(name, version) {
