@@ -23,6 +23,7 @@ const TARGETS = {
   'lodash':               '4.17.23',
   'lodash-es':            '4.17.23',
   'diff':                 '8.0.3',
+  '@hono/node-server':    '1.19.10',
 };
 
 const TARGETS_V9 = { 'minimatch': '9.0.7' };
