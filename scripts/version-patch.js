@@ -2,14 +2,14 @@
 const fs = require('fs');
 const path = require('path');
 
-// Целевые безопасные версии для перезаписи pkg.version в package.json.
-// Это страховочный слой поверх rsync-патчинга в Dockerfile.
+// Target safe versions for package.json version field override.
+// IMPORTANT: for packages in SAME_MAJOR_ONLY, only patch within the same major.
 const patches = [
   // minimatch v9.x -> 9.0.7
   ['minimatch', v => v && v.startsWith('9.'), '9.0.7'],
   // minimatch v10.x -> 10.2.4
   ['minimatch', v => !v || !v.startsWith('9.'), '10.2.4'],
-  // tar -> 7.5.11 (CVE-2026-31802, ALL versions, ALL nested paths)
+  // tar -> 7.5.11 (CVE-2026-31802, ALL versions)
   ['tar',                    null, '7.5.11'],
   // glob: v10.x -> 10.5.0, v11.x -> 11.1.0
   ['glob', v => v && v.startsWith('10.'), '10.5.0'],
@@ -19,7 +19,8 @@ const patches = [
   ['ajv',                    null, '8.18.0'],
   ['webpack',                null, '5.105.4'],
   ['vite',                   null, '7.0.8'],
-  ['undici',                 null, '6.23.0'],
+  // undici: only patch 6.x — do NOT downgrade 7.x
+  ['undici', v => v && v.startsWith('6.'), '6.23.0'],
   ['diff',                   null, '8.0.3'],
   ['lodash',                 null, '4.17.23'],
   ['lodash-es',              null, '4.17.23'],
@@ -34,7 +35,8 @@ const patches = [
   ['basic-ftp',              null, '5.2.0'],
   ['@tootallnate/once',      null, '3.0.1'],
   ['@hono/node-server',      null, '1.19.10'],
-  ['@smithy/config-resolver',null, '3.0.10'],
+  // @smithy/config-resolver: only patch 3.x — do NOT downgrade 4.x
+  ['@smithy/config-resolver', v => v && v.startsWith('3.'), '3.0.10'],
 ];
 
 function resolveTarget(name, version) {
@@ -45,9 +47,6 @@ function resolveTarget(name, version) {
   return null;
 }
 
-// Deep recursive walk — finds every package.json in the tree,
-// including .pnpm virtual store, scoped packages, nested node_modules.
-// No depth limit. Skips symlinks to avoid infinite loops.
 function walkPackageJsonFiles(dir, results = []) {
   let entries;
   try {
@@ -86,7 +85,6 @@ for (const f of allFiles) {
     const target = resolveTarget(pkg.name, pkg.version);
     if (target && pkg.version !== target) {
       console.log('version-patch:', f, pkg.version, '->', target);
-      // Ensure file is writable
       try { fs.chmodSync(f, 0o644); } catch (_) {}
       pkg.version = target;
       fs.writeFileSync(f, JSON.stringify(pkg, null, 2) + '\n');

@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
+// Target safe versions. Trivy/Scout must see EXACTLY these versions in .pnpm dir names.
 const TARGETS = {
   'tar':                      '7.5.11',
   'minimatch':                '10.2.4',
@@ -26,6 +27,13 @@ const TARGETS = {
   '@hono/node-server':        '1.19.10',
   '@smithy/config-resolver':  '3.0.10',
 };
+
+// Packages where MAJOR version must not be changed (only patch within same major).
+// For these, only patch dirs whose major matches the target major.
+const SAME_MAJOR_ONLY = new Set([
+  'undici',
+  '@smithy/config-resolver',
+]);
 
 const TARGETS_V9 = { 'minimatch': '9.0.7' };
 
@@ -56,6 +64,10 @@ function semverGte(a, b) {
     if (d !== 0) return d > 0;
   }
   return true;
+}
+
+function semverMajor(v) {
+  return parseInt(String(v).split('.')[0], 10) || 0;
 }
 
 function cpDir(src, dst) {
@@ -89,6 +101,8 @@ try {
 }
 
 // ---- STEP 1: find best source dirs ----
+// For SAME_MAJOR_ONLY packages: source must have same major as target.
+// For others: source must be >= target.
 
 var allPkgJsons = walk(APP_NM);
 
@@ -98,7 +112,15 @@ for (var i = 0; i < allPkgJsons.length; i++) {
     var pkg = JSON.parse(fs.readFileSync(allPkgJsons[i], 'utf8'));
     var name = pkg.name; var ver = pkg.version || '';
     if (!name || !TARGETS[name]) continue;
-    if (!semverGte(ver, TARGETS[name])) continue;
+    var targetVer = TARGETS[name];
+    var ok = false;
+    if (SAME_MAJOR_ONLY.has(name)) {
+      // Must be same major AND >= target
+      ok = semverMajor(ver) === semverMajor(targetVer) && semverGte(ver, targetVer);
+    } else {
+      ok = semverGte(ver, targetVer);
+    }
+    if (!ok) continue;
     var dir = path.dirname(allPkgJsons[i]);
     if (!sources[name] || semverGte(ver, sources[name].ver)) sources[name] = { dir: dir, ver: ver };
   } catch (_) {}
@@ -108,6 +130,8 @@ var srcKeys = Object.keys(sources);
 for (var i = 0; i < srcKeys.length; i++) console.log(' ', srcKeys[i], sources[srcKeys[i]].ver, '->', sources[srcKeys[i]].dir);
 
 // ---- STEP 2: physically patch all old copies ----
+// For SAME_MAJOR_ONLY: only patch dirs whose major matches target major.
+// Skip dirs whose version is already >= target (avoid cross-major overwrite).
 
 var patched = 0;
 for (var i = 0; i < allPkgJsons.length; i++) {
@@ -115,7 +139,9 @@ for (var i = 0; i < allPkgJsons.length; i++) {
     var pkg = JSON.parse(fs.readFileSync(allPkgJsons[i], 'utf8'));
     var name = pkg.name; var ver = pkg.version || '';
     if (!name || !sources[name]) continue;
-    if (semverGte(ver, TARGETS[name])) continue;
+    var targetVer = TARGETS[name];
+    if (semverGte(ver, targetVer)) continue; // already safe
+    if (SAME_MAJOR_ONLY.has(name) && semverMajor(ver) !== semverMajor(targetVer)) continue; // wrong major, skip
     var dst = path.dirname(allPkgJsons[i]);
     var src = sources[name].dir;
     if (dst === src) continue;
@@ -135,7 +161,10 @@ var VERSION_PATCHES = [
   ['glob', function(v) { return v && v.startsWith('10.'); }, '10.5.0'],
   ['glob', function(v) { return v && v.startsWith('11.'); }, '11.1.0'],
   ['glob', null, '10.5.0'],
-  ['@smithy/config-resolver', null, '3.0.10'],
+  // @smithy/config-resolver: only patch same major (3.x)
+  ['@smithy/config-resolver', function(v) { return v && v.startsWith('3.'); }, '3.0.10'],
+  // undici: only patch same major (6.x)
+  ['undici', function(v) { return v && v.startsWith('6.'); }, '6.23.0'],
 ];
 function resolveVersionPatch(name, ver) {
   for (var i = 0; i < VERSION_PATCHES.length; i++) {
@@ -161,6 +190,8 @@ for (var i = 0; i < refreshed.length; i++) {
 console.log('step3 done');
 
 // ---- STEP 4: rename .pnpm dirs so Trivy sees correct version in dir name ----
+// SAME_MAJOR_ONLY packages: only rename dirs with same major as target.
+// Dirs with different major are removed entirely (they are stale duplicates).
 
 if (fs.existsSync(PNPM_DIR)) {
   var pnpmEntries = fs.readdirSync(PNPM_DIR);
@@ -183,6 +214,15 @@ if (fs.existsSync(PNPM_DIR)) {
     if (!target || curVer === target) continue;
 
     var oldPath  = path.join(PNPM_DIR, entry);
+
+    // For SAME_MAJOR_ONLY: if current major != target major, just delete the dir
+    if (SAME_MAJOR_ONLY.has(pkgName) && semverMajor(curVer) !== semverMajor(target)) {
+      console.log('rename-pnpm: removing wrong-major', entry);
+      fs.rmSync(oldPath, { recursive: true, force: true });
+      renamedCount++;
+      continue;
+    }
+
     var newEntry = (scope || '') + pkgBase + '@' + target + suffix;
     var newPath  = path.join(PNPM_DIR, newEntry);
 
