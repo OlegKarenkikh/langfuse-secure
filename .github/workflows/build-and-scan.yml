@@ -40,6 +40,7 @@ jobs:
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          no-cache-filter: patcher
 
       - name: Trivy - Table (web)
         uses: aquasecurity/trivy-action@master
@@ -130,6 +131,7 @@ jobs:
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          no-cache-filter: patcher
 
       - name: Trivy - Table (worker)
         uses: aquasecurity/trivy-action@master
@@ -246,6 +248,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          no-cache-filter: patcher
           labels: |
             org.opencontainers.image.title=langfuse-secure
             org.opencontainers.image.source=https://github.com/OlegKarenkikh/langfuse-secure
@@ -263,6 +266,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          no-cache-filter: patcher
           labels: |
             org.opencontainers.image.title=langfuse-worker-secure
             org.opencontainers.image.source=https://github.com/OlegKarenkikh/langfuse-secure
