@@ -6,12 +6,17 @@ FROM langfuse/langfuse-worker:3 AS source
 FROM cgr.dev/chainguard/node:latest AS patcher
 USER root
 WORKDIR /app
-COPY --from=source /app /app
 COPY scripts/patch-all.js /tmp/patch-all.js
 COPY scripts/version-patch.js /tmp/version-patch.js
-RUN node /tmp/patch-all.js
-RUN node /tmp/version-patch.js
-RUN find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; find /app -path "*/esbuild/bin/esbuild" -delete 2>/dev/null; find /app -name "esbuild" -type f -perm /111 -delete 2>/dev/null; find /app -name "tsgo" -type f -perm /111 -delete 2>/dev/null; true
+RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
+    cp -a /mnt/source/. /app && \
+    node /tmp/patch-all.js && \
+    node /tmp/version-patch.js && \
+    find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
+    find /app -path "*/esbuild/bin/esbuild" -delete 2>/dev/null; \
+    find /app -name "esbuild" -type f -perm /111 -delete 2>/dev/null; \
+    find /app -name "tsgo" -type f -perm /111 -delete 2>/dev/null; \
+    true
 
 # Stage 3: runtime
 FROM cgr.dev/chainguard/node:latest
