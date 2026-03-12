@@ -3,13 +3,12 @@ const fs = require('fs');
 const path = require('path');
 
 // Target safe versions for package.json version field override.
-// IMPORTANT: for packages in SAME_MAJOR_ONLY, only patch within the same major.
 const patches = [
   // minimatch v9.x -> 9.0.7
   ['minimatch', v => v && v.startsWith('9.'), '9.0.7'],
   // minimatch v10.x -> 10.2.4
   ['minimatch', v => !v || !v.startsWith('9.'), '10.2.4'],
-  // tar -> 7.5.11 (CVE-2026-31802, ALL versions)
+  // tar -> 7.5.11
   ['tar',                    null, '7.5.11'],
   // glob: v10.x -> 10.5.0, v11.x -> 11.1.0
   ['glob', v => v && v.startsWith('10.'), '10.5.0'],
@@ -35,9 +34,20 @@ const patches = [
   ['basic-ftp',              null, '5.2.0'],
   ['@tootallnate/once',      null, '3.0.1'],
   ['@hono/node-server',      null, '1.19.10'],
-  // @smithy/config-resolver: only patch 3.x — do NOT downgrade 4.x
-  ['@smithy/config-resolver', v => v && v.startsWith('3.'), '3.0.10'],
+  // GHSA-6475-r3vj-m8vf: @smithy/config-resolver fixed in >= 4.4.0.
+  // Patch ALL versions (3.x and 4.x < 4.4.6) -> 4.4.6.
+  ['@smithy/config-resolver', v => !semverGte(v || '0', '4.4.6'), '4.4.6'],
 ];
+
+function semverGte(a, b) {
+  const pa = String(a).replace(/[^0-9.]/g, '').split('.').map(Number);
+  const pb = String(b).replace(/[^0-9.]/g, '').split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d !== 0) return d > 0;
+  }
+  return true;
+}
 
 function resolveTarget(name, version) {
   for (const [pkgName, matcher, target] of patches) {

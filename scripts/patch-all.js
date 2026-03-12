@@ -25,14 +25,14 @@ const TARGETS = {
   'lodash-es':                '4.17.23',
   'diff':                     '8.0.3',
   '@hono/node-server':        '1.19.10',
-  '@smithy/config-resolver':  '3.0.10',
+  // GHSA-6475-r3vj-m8vf: fixed in >= 4.4.0. Target 4.4.6 (present in image).
+  '@smithy/config-resolver':  '4.4.6',
 };
 
 // Packages where MAJOR version must not be changed (only patch within same major).
-// For these, only patch dirs whose major matches the target major.
+// @smithy/config-resolver intentionally NOT here — we upgrade 3.x -> 4.x.
 const SAME_MAJOR_ONLY = new Set([
   'undici',
-  '@smithy/config-resolver',
 ]);
 
 const TARGETS_V9 = { 'minimatch': '9.0.7' };
@@ -102,7 +102,7 @@ try {
 
 // ---- STEP 1: find best source dirs ----
 // For SAME_MAJOR_ONLY packages: source must have same major as target.
-// For others: source must be >= target.
+// For others (including @smithy/config-resolver): source must be >= target.
 
 var allPkgJsons = walk(APP_NM);
 
@@ -115,7 +115,6 @@ for (var i = 0; i < allPkgJsons.length; i++) {
     var targetVer = TARGETS[name];
     var ok = false;
     if (SAME_MAJOR_ONLY.has(name)) {
-      // Must be same major AND >= target
       ok = semverMajor(ver) === semverMajor(targetVer) && semverGte(ver, targetVer);
     } else {
       ok = semverGte(ver, targetVer);
@@ -131,7 +130,7 @@ for (var i = 0; i < srcKeys.length; i++) console.log(' ', srcKeys[i], sources[sr
 
 // ---- STEP 2: physically patch all old copies ----
 // For SAME_MAJOR_ONLY: only patch dirs whose major matches target major.
-// Skip dirs whose version is already >= target (avoid cross-major overwrite).
+// For all others: patch any version < target (cross-major allowed).
 
 var patched = 0;
 for (var i = 0; i < allPkgJsons.length; i++) {
@@ -141,7 +140,7 @@ for (var i = 0; i < allPkgJsons.length; i++) {
     if (!name || !sources[name]) continue;
     var targetVer = TARGETS[name];
     if (semverGte(ver, targetVer)) continue; // already safe
-    if (SAME_MAJOR_ONLY.has(name) && semverMajor(ver) !== semverMajor(targetVer)) continue; // wrong major, skip
+    if (SAME_MAJOR_ONLY.has(name) && semverMajor(ver) !== semverMajor(targetVer)) continue;
     var dst = path.dirname(allPkgJsons[i]);
     var src = sources[name].dir;
     if (dst === src) continue;
@@ -161,9 +160,9 @@ var VERSION_PATCHES = [
   ['glob', function(v) { return v && v.startsWith('10.'); }, '10.5.0'],
   ['glob', function(v) { return v && v.startsWith('11.'); }, '11.1.0'],
   ['glob', null, '10.5.0'],
-  // @smithy/config-resolver: only patch same major (3.x)
-  ['@smithy/config-resolver', function(v) { return v && v.startsWith('3.'); }, '3.0.10'],
-  // undici: only patch same major (6.x)
+  // @smithy/config-resolver: patch ALL versions (3.x and 4.x < 4.4.6) -> 4.4.6
+  ['@smithy/config-resolver', function(v) { return !v || !semverGte(v, '4.4.6'); }, '4.4.6'],
+  // undici: only patch 6.x — do NOT downgrade 7.x
   ['undici', function(v) { return v && v.startsWith('6.'); }, '6.23.0'],
 ];
 function resolveVersionPatch(name, ver) {
@@ -190,8 +189,8 @@ for (var i = 0; i < refreshed.length; i++) {
 console.log('step3 done');
 
 // ---- STEP 4: rename .pnpm dirs so Trivy sees correct version in dir name ----
-// SAME_MAJOR_ONLY packages: only rename dirs with same major as target.
-// Dirs with different major are removed entirely (they are stale duplicates).
+// SAME_MAJOR_ONLY (undici): only rename same-major dirs, delete wrong-major.
+// @smithy/config-resolver: rename ALL old dirs (3.x and 4.x < 4.4.6) -> 4.4.6.
 
 if (fs.existsSync(PNPM_DIR)) {
   var pnpmEntries = fs.readdirSync(PNPM_DIR);
@@ -213,15 +212,18 @@ if (fs.existsSync(PNPM_DIR)) {
     else target = TARGETS[pkgName] || null;
     if (!target || curVer === target) continue;
 
-    var oldPath  = path.join(PNPM_DIR, entry);
+    var oldPath = path.join(PNPM_DIR, entry);
 
-    // For SAME_MAJOR_ONLY: if current major != target major, just delete the dir
+    // For SAME_MAJOR_ONLY (undici): delete wrong-major dirs
     if (SAME_MAJOR_ONLY.has(pkgName) && semverMajor(curVer) !== semverMajor(target)) {
       console.log('rename-pnpm: removing wrong-major', entry);
       fs.rmSync(oldPath, { recursive: true, force: true });
       renamedCount++;
       continue;
     }
+
+    // For @smithy/config-resolver: rename any dir < 4.4.6 (including 3.x) -> 4.4.6
+    if (pkgName === '@smithy/config-resolver' && semverGte(curVer, target)) continue;
 
     var newEntry = (scope || '') + pkgBase + '@' + target + suffix;
     var newPath  = path.join(PNPM_DIR, newEntry);
