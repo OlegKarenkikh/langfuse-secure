@@ -135,6 +135,7 @@ var VERSION_PATCHES = [
   ['glob', function(v) { return v && v.startsWith('10.'); }, '10.5.0'],
   ['glob', function(v) { return v && v.startsWith('11.'); }, '11.1.0'],
   ['glob', null, '10.5.0'],
+  ['@smithy/config-resolver', null, '3.0.10'],
 ];
 function resolveVersionPatch(name, ver) {
   for (var i = 0; i < VERSION_PATCHES.length; i++) {
