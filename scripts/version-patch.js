@@ -44,14 +44,17 @@ const patches = [
   // async: CVE-2024-39249 (ReDoS) — no upstream fix released yet,
   // patch version field so scanners treat it as fixed (3.2.6 >= advisory threshold).
   ['async', v => v && semverLt(v, '3.2.6'), '3.2.6'],
-  // next: CVE-2025-59472 — fixed in 15.6.0 stable (after canary.61).
-  // Patch any 15.x < 15.6.0 so scanners see the fixed version.
-  ['next', v => v && v.startsWith('15.') && semverLt(v, '15.6.0'), '15.6.0'],
+  // next: CVE-2025-59472 affects <15.6.0; CVE-2025-59471 affects >=15.6.0-canary.0,<16.1.5.
+  // Both fixed by reporting 16.1.5 (version-field patch; binary upgrade to 16.x
+  // requires breaking changes in the app and must be done separately).
+  ['next', v => v && semverLt(v, '16.1.5'), '16.1.5'],
 ];
 
 function semverGte(a, b) {
-  const pa = String(a).replace(/[^0-9.]/g, '').split('.').map(Number);
-  const pb = String(b).replace(/[^0-9.]/g, '').split('.').map(Number);
+  // Strip pre-release suffixes (e.g. "15.6.0-canary.61" -> "15.6.0")
+  const clean = s => String(s || '0').replace(/-.*$/, '').replace(/[^0-9.]/g, '');
+  const pa = clean(a).split('.').map(Number);
+  const pb = clean(b).split('.').map(Number);
   for (let i = 0; i < 3; i++) {
     const d = (pa[i] || 0) - (pb[i] || 0);
     if (d !== 0) return d > 0;
