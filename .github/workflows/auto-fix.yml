@@ -1,0 +1,127 @@
+name: Auto-Fix Vulnerabilities
+
+# Runs AFTER build-and-scan.yml completes.
+# If the Gate step failed (new CVEs found), this workflow:
+#   1. Downloads the Trivy JSON artifacts
+#   2. Runs auto-patch.js to extend version-patch.js / patch-all.js
+#   3. Opens a PR "auto-fix/YYYY-MM-DD" with the changes
+
+on:
+  workflow_run:
+    workflows: ["Build & CVE Scan"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  auto-fix:
+    name: Auto-Fix CVEs
+    runs-on: ubuntu-latest
+    # Only act when the scan workflow actually failed (Gate triggered exit-code 1)
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+
+    steps:
+      # ----------------------------------------------------------
+      # 1. Checkout repo at the SHA that triggered the scan
+      # ----------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      # ----------------------------------------------------------
+      # 2. Download Trivy JSON artifacts from the failed run
+      # ----------------------------------------------------------
+      - name: Download Trivy artifacts
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Downloads all artifacts; each is in its own subdirectory
+          path: trivy-artifacts
+
+      - name: Flatten JSON files
+        run: |
+          # Collect all trivy-*.json files from subdirs into cwd
+          find trivy-artifacts -name 'trivy-*.json' -exec cp {} . \;
+          ls -la trivy-*.json 2>/dev/null || echo 'No JSON files found'
+
+      # ----------------------------------------------------------
+      # 3. Run auto-patch.js
+      # ----------------------------------------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run auto-patch
+        id: auto_patch
+        run: |
+          set +e
+          node scripts/auto-patch.js trivy-web.json trivy-worker.json
+          EXIT_CODE=$?
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+          exit 0  # never fail this step; outcome determined by exit_code output
+
+      # ----------------------------------------------------------
+      # 4. If patches were written (exit 2), commit and open PR
+      # ----------------------------------------------------------
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true"  >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create auto-fix branch and commit
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          DATE="$(date -u +%Y-%m-%d)"
+          BRANCH="auto-fix/${DATE}-${{ github.run_id }}"
+          echo "BRANCH=${BRANCH}" >> "$GITHUB_ENV"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${BRANCH}"
+          git add scripts/version-patch.js scripts/patch-all.js
+          git commit -m "fix(auto): patch new CVEs found by Trivy [skip ci]"
+          git push origin "${BRANCH}"
+
+      - name: Open Pull Request
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = process.env.BRANCH;
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${{ github.event.workflow_run.id }}`;
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `fix(auto): patch CVEs detected by Trivy — ${new Date().toISOString().slice(0,10)}`,
+              head:  branch,
+              base:  'main',
+              body: [
+                '## Auto-Fix: новые уязвимости обнаружены Trivy',
+                '',
+                `Triggered by failed scan run: [${runUrl}](${runUrl})`,
+                '',
+                '### Что сделано',
+                '- `scripts/auto-patch.js` проанализировал `trivy-web.json` и `trivy-worker.json`',
+                '- Добавлены новые записи в `version-patch.js` и/или `patch-all.js`',
+                '- После merge CI автоматически пересоберёт образы с патчами',
+                '',
+                '> ⚠️ Проверьте, что версии корректны и не ломают совместимость.',
+              ].join('\n'),
+            });
+            console.log(`PR created: ${pr.html_url}`);
+
+      - name: No new patches needed
+        if: steps.changes.outputs.changed == 'false'
+        run: |
+          echo '::notice::auto-patch found no new fixable CVEs — manual investigation required.'
