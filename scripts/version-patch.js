@@ -19,7 +19,7 @@ const patches = [
   ['webpack',                null, '5.105.4'],
   ['vite',                   null, '7.0.8'],
   // undici: only patch 6.x — do NOT downgrade 7.x
-  ['undici', v => v && v.startsWith('6.'), '6.23.0'],
+  ['undici', v => v && v.startsWith('6.'), '6.24.0'],
   ['diff',                   null, '8.0.3'],
   ['lodash',                 null, '4.17.23'],
   ['lodash-es',              null, '4.17.23'],
@@ -37,6 +37,10 @@ const patches = [
   // GHSA-6475-r3vj-m8vf: @smithy/config-resolver fixed in >= 4.4.0.
   // Patch ALL versions (3.x and 4.x < 4.4.6) -> 4.4.6.
   ['@smithy/config-resolver', v => !semverGte(v || '0', '4.4.6'), '4.4.6'],
+  // flatted: CVE-2026-32141
+  ['flatted',                null, '3.4.0'],
+  // kysely: CSPW-0062 protestware — patch to clean fork version
+  ['kysely',                 null, '0.28.8'],
 ];
 
 function semverGte(a, b) {

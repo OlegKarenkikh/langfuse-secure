@@ -20,10 +20,12 @@ const TARGETS = {
   'cross-spawn':              '7.0.6',
   'basic-ftp':                '5.2.0',
   'vite':                     '7.0.8',
-  'undici':                   '6.23.0',
+  'undici':                   '6.24.0',
   'lodash':                   '4.17.23',
   'lodash-es':                '4.17.23',
   'diff':                     '8.0.3',
+  'flatted':                  '3.4.0',
+  'kysely':                   '0.28.8',
   '@hono/node-server':        '1.19.10',
   // GHSA-6475-r3vj-m8vf: fixed in >= 4.4.0. Target 4.4.6 (present in image).
   '@smithy/config-resolver':  '4.4.6',
@@ -163,7 +165,11 @@ var VERSION_PATCHES = [
   // @smithy/config-resolver: patch ALL versions (3.x and 4.x < 4.4.6) -> 4.4.6
   ['@smithy/config-resolver', function(v) { return !v || !semverGte(v, '4.4.6'); }, '4.4.6'],
   // undici: only patch 6.x — do NOT downgrade 7.x
-  ['undici', function(v) { return v && v.startsWith('6.'); }, '6.23.0'],
+  ['undici', function(v) { return v && v.startsWith('6.'); }, '6.24.0'],
+  // flatted: CVE-2026-32141
+  ['flatted', null, '3.4.0'],
+  // kysely: CSPW-0062 protestware — patch to clean fork version
+  ['kysely', null, '0.28.8'],
 ];
 function resolveVersionPatch(name, ver) {
   for (var i = 0; i < VERSION_PATCHES.length; i++) {

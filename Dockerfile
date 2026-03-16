@@ -16,6 +16,7 @@ RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     find /app -path "*/esbuild/bin/esbuild" -delete 2>/dev/null; \
     find /app -name "esbuild" -type f -perm /111 -delete 2>/dev/null; \
     find /app -name "tsgo" -type f -perm /111 -delete 2>/dev/null; \
+    find /app -path "*/monorepo-symlink-test*" -maxdepth 10 -type d -exec rm -rf {} + 2>/dev/null; \
     true
 
 # Stage 3: runtime
