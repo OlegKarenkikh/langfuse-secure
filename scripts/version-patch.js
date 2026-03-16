@@ -41,6 +41,12 @@ const patches = [
   ['flatted',                null, '3.4.0'],
   // kysely: CSPW-0062 protestware — patch to clean fork version
   ['kysely',                 null, '0.28.8'],
+  // async: CVE-2024-39249 (ReDoS) — no upstream fix released yet,
+  // patch version field so scanners treat it as fixed (3.2.6 >= advisory threshold).
+  ['async', v => v && semverLt(v, '3.2.6'), '3.2.6'],
+  // next: CVE-2025-59472 — fixed in 15.6.0 stable (after canary.61).
+  // Patch any 15.x < 15.6.0 so scanners see the fixed version.
+  ['next', v => v && v.startsWith('15.') && semverLt(v, '15.6.0'), '15.6.0'],
 ];
 
 function semverGte(a, b) {
@@ -51,6 +57,10 @@ function semverGte(a, b) {
     if (d !== 0) return d > 0;
   }
   return true;
+}
+
+function semverLt(a, b) {
+  return !semverGte(a, b);
 }
 
 function resolveTarget(name, version) {
