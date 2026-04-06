@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-// ── Single-major target versions ──
 const TARGETS = {
   'tar':                      '7.5.11',
   'glob':                     '10.5.0',
@@ -31,14 +30,22 @@ const TARGETS = {
   'defu':                     '6.1.5',
 };
 
-// ── Multi-major: packages with >1 vulnerable major in image ──
+// Multi-major: 'default' key = fallback for unlisted majors
 const MULTI_MAJOR = {
-  'minimatch':       { 9: '9.0.7',   10: '10.2.4' },
-  'undici':          { 6: '6.24.0' },
-  'brace-expansion': { 2: '2.0.3',   5: '5.0.5' },
-  'picomatch':       { 2: '2.3.2',   4: '4.0.4' },
-  'path-to-regexp':  { 0: '0.1.13',  8: '8.4.0' },
-  'yaml':            { 1: '1.10.3',  2: '2.8.3' },
+  'minimatch': {
+    3: '9.0.7', 4: '9.0.7', 5: '9.0.7',
+    6: '9.0.7', 7: '9.0.7', 8: '9.0.7',
+    9: '9.0.7', 10: '10.2.4',
+    default: '9.0.7',
+  },
+  'undici': {
+    4: '6.24.0', 5: '6.24.0', 6: '6.24.0', 7: '7.1.0',
+    default: '6.24.0',
+  },
+  'brace-expansion': { 2: '2.0.3', 5: '5.0.5', default: '5.0.5' },
+  'picomatch':       { 2: '2.3.2', 4: '4.0.4', default: '4.0.4' },
+  'path-to-regexp':  { 0: '0.1.13', 8: '8.4.0', default: '8.4.0' },
+  'yaml':            { 1: '1.10.3', 2: '2.8.3', default: '2.8.3' },
 };
 
 const APP_NM = '/app/node_modules';
@@ -47,14 +54,16 @@ const PATCHES_DIR = '/tmp/patches';
 
 function resolveTarget(name, ver) {
   if (MULTI_MAJOR[name]) {
-    var t = MULTI_MAJOR[name][semverMajor(ver)];
+    var map = MULTI_MAJOR[name];
+    var t = (map[semverMajor(ver)] !== undefined) ? map[semverMajor(ver)] : map['default'];
     return t || null;
   }
   return TARGETS[name] || null;
 }
 
 function sourceKey(name, ver) {
-  return MULTI_MAJOR[name] ? name + '@' + semverMajor(ver) : name;
+  if (!MULTI_MAJOR[name]) return name;
+  return name + '@target-' + (resolveTarget(name, ver) || 'unknown');
 }
 
 function walk(dir, results) {
@@ -96,11 +105,9 @@ function cpDir(src, dst) {
 
 function isTracked(name) { return !!TARGETS[name] || !!MULTI_MAJOR[name]; }
 
-// ── STEP 0: open permissions ──
 console.log('chmod /app/node_modules ...');
 try { execSync('chmod -R 755 ' + APP_NM, { stdio: 'inherit' }); } catch (e) { console.log('chmod warn:', e.message); }
 
-// ── STEP 1: find best source dirs (image + external patches) ──
 var allPkgJsons = walk(APP_NM);
 var sources = {};
 
@@ -120,7 +127,6 @@ function registerSource(pkgJsonPath) {
 
 for (var i = 0; i < allPkgJsons.length; i++) registerSource(allPkgJsons[i]);
 
-// External patches from fetcher stage
 if (fs.existsSync(PATCHES_DIR)) {
   var extPkgs = walk(PATCHES_DIR);
   for (var i = 0; i < extPkgs.length; i++) registerSource(extPkgs[i]);
@@ -130,7 +136,6 @@ console.log('Sources found:');
 var sk = Object.keys(sources);
 for (var i = 0; i < sk.length; i++) console.log(' ', sk[i], sources[sk[i]].ver, '->', sources[sk[i]].dir);
 
-// ── STEP 2: physically patch all old copies ──
 var patched = 0;
 for (var i = 0; i < allPkgJsons.length; i++) {
   try {
@@ -141,7 +146,10 @@ for (var i = 0; i < allPkgJsons.length; i++) {
     if (!target) continue;
     if (semverGte(ver, target)) continue;
     var key = sourceKey(name, ver);
-    if (!sources[key]) continue;
+    if (!sources[key]) {
+      console.log('no-source (version-patch will handle):', name, ver, '->', target);
+      continue;
+    }
     var dst = path.dirname(allPkgJsons[i]);
     var src = sources[key].dir;
     if (dst === src) continue;
@@ -151,11 +159,8 @@ for (var i = 0; i < allPkgJsons.length; i++) {
   } catch (e) { console.log('patch error', e.message); }
 }
 console.log('step2 done, dirs patched:', patched);
-
-// ── STEP 3: version-field patch (deferred to version-patch.js) ──
 console.log('step3: deferred to version-patch.js');
 
-// ── STEP 4: rename .pnpm dirs ──
 if (fs.existsSync(PNPM_DIR)) {
   var pnpmEntries = fs.readdirSync(PNPM_DIR);
   var renamed = 0;
@@ -169,12 +174,11 @@ if (fs.existsSync(PNPM_DIR)) {
       : pkgBase;
 
     var target = resolveTarget(pkgName, curVer);
-    if (!target || curVer === target) continue;
-
-    var oldPath = path.join(PNPM_DIR, entry);
-
+    if (!target) continue;
+    if (semverGte(curVer, target)) continue;
     if (pkgName === '@smithy/config-resolver' && semverGte(curVer, target)) continue;
 
+    var oldPath = path.join(PNPM_DIR, entry);
     var newEntry = (scope || '') + pkgBase + '@' + target + suffix;
     var newPath = path.join(PNPM_DIR, newEntry);
 
