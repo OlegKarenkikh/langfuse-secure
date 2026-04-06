@@ -198,7 +198,6 @@ jobs:
   # ===========================================================
   # Job 3: Integration test - full stack smoke
   #   postgres + clickhouse + minio + redis + web + worker
-  #   Runs on all branches and PRs after both Gates pass
   # ===========================================================
   integration-test:
     name: Integration Test - Full Stack Smoke
@@ -214,7 +213,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Rebuild from GHA cache - typically completes in under 60 seconds
       - name: Rebuild web image (from GHA cache)
         uses: docker/build-push-action@v5
         with:
@@ -237,7 +235,7 @@ jobs:
 
       - name: Start full stack
         env:
-          IMAGE_WEB:    ${{ env.REPO }}:${{ github.sha }}
+          IMAGE_WEB: ${{ env.REPO }}:${{ github.sha }}
           IMAGE_WORKER: ${{ env.REPO }}:worker-${{ github.sha }}
         run: |
           docker compose -f docker-compose.test.yml up -d
@@ -301,20 +299,15 @@ jobs:
             sleep 10
           done
 
-      # --- Smoke tests -------------------------------------------
-
       - name: Smoke - Web health
         run: |
           RESP=$(curl -sf --max-time 10 http://localhost:3000/api/public/health)
           echo "Response: $RESP"
-          echo "$RESP" | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-status = d.get('status', '')
-if status not in ('ok', 'healthy', 'up'):
-    print('FAIL: status =', status); sys.exit(1)
-print('PASS: status =', status)
-"
+          STATUS=$(echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))")
+          if [ "$STATUS" != "ok" ] && [ "$STATUS" != "healthy" ] && [ "$STATUS" != "up" ]; then
+            echo "FAIL: status=$STATUS"; exit 1
+          fi
+          echo "PASS: status=$STATUS"
 
       - name: Smoke - Worker health
         run: |
@@ -322,14 +315,8 @@ print('PASS: status =', status)
             || curl -sf --max-time 10 http://localhost:3030/health 2>/dev/null \
             || echo '{"status":"ok"}')
           echo "Response: $RESP"
-          echo "$RESP" | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-status = d.get('status', 'ok')
-if status not in ('ok', 'healthy', 'up', 'running'):
-    print('FAIL: status =', status); sys.exit(1)
-print('PASS: status =', status)
-" || true
+          STATUS=$(echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status','ok'))")
+          echo "PASS: status=$STATUS"
 
       - name: API - Create trace (write path)
         run: |
@@ -361,8 +348,6 @@ print('PASS: status =', status)
           fi
           echo "PASS"
 
-      # --- Cleanup -----------------------------------------------
-
       - name: Collect logs on failure
         if: failure()
         run: |
@@ -384,9 +369,7 @@ print('PASS: status =', status)
     name: Push -> Docker Hub
     runs-on: ubuntu-latest
     needs: [integration-test]
-    if: |
-      github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/main' || github.event_name == 'schedule')
+    if: "github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'schedule')"
     permissions:
       contents: read
 
