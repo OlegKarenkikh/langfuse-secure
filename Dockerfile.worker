@@ -2,13 +2,21 @@
 # Stage 1: source
 FROM langfuse/langfuse-worker:3 AS source
 
-# Stage 2: patcher (Chainguard - no npm/apt/rsync, zero CVE)
+# Stage 2: fetcher — downloads fixed npm packages + kysely fork
+FROM node:22-slim AS fetcher
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /tmp/patches
+COPY scripts/fetch-patches.sh /tmp/fetch-patches.sh
+RUN chmod +x /tmp/fetch-patches.sh && bash /tmp/fetch-patches.sh
+
+# Stage 3: patcher (Chainguard — zero OS CVE)
 FROM cgr.dev/chainguard/node:latest AS patcher
 USER root
 WORKDIR /app
 COPY scripts/patch-all.js /tmp/patch-all.js
 COPY scripts/version-patch.js /tmp/version-patch.js
 RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
+    --mount=type=bind,from=fetcher,source=/tmp/patches,target=/tmp/patches \
     cp -a /mnt/source/. /app && \
     node /tmp/patch-all.js && \
     node /tmp/version-patch.js && \
@@ -19,7 +27,7 @@ RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     find /app -path "*/monorepo-symlink-test*" -maxdepth 10 -type d -exec rm -rf {} + 2>/dev/null; \
     true
 
-# Stage 3: runtime
+# Stage 4: runtime
 FROM cgr.dev/chainguard/node:latest
 LABEL org.opencontainers.image.title="langfuse-worker-secure" \
       org.opencontainers.image.source="https://github.com/OlegKarenkikh/langfuse-secure" \
