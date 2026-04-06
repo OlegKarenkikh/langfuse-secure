@@ -2,6 +2,9 @@
 # Used exclusively by the CI integration-test job.
 # Infra images are official/chainguard; langfuse images are built locally
 # and injected via IMAGE_WEB / IMAGE_WORKER env vars.
+#
+# NOTE: cgr.dev/chainguard/minio is distroless (no shell/curl inside).
+# Its readiness is checked from the CI runner host in build-and-scan.yml.
 
 services:
 
@@ -40,18 +43,16 @@ services:
       - /var/lib/clickhouse
       - /var/log/clickhouse-server
 
+  # distroless image - no shell inside, healthcheck done from CI runner host
   minio:
-    image: minio/minio:latest
-    command: server /data --address ":9000" --console-address ":9001"
+    image: cgr.dev/chainguard/minio
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: miniosecret
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 15
-      start_period: 5s
+    ports:
+      - "9000:9000"
     tmpfs:
       - /data
 
@@ -73,7 +74,7 @@ services:
     depends_on:
       postgres:    { condition: service_healthy }
       clickhouse:  { condition: service_healthy }
-      minio:       { condition: service_healthy }
+      minio:       { condition: service_started }
       redis:       { condition: service_healthy }
     ports:
       - "3000:3000"
@@ -127,7 +128,7 @@ services:
     depends_on:
       postgres:    { condition: service_healthy }
       clickhouse:  { condition: service_healthy }
-      minio:       { condition: service_healthy }
+      minio:       { condition: service_started }
       redis:       { condition: service_healthy }
     ports:
       - "3030:3030"
