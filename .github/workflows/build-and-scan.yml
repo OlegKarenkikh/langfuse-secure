@@ -252,12 +252,9 @@ jobs:
           echo "=== Container states after up ==="
           docker compose -f docker-compose.test.yml ps -a
 
-          echo "=== minio logs ==="
-          docker compose -f docker-compose.test.yml logs minio 2>&1 | tail -30
-
           if [ "$COMPOSE_EXIT" -ne 0 ]; then
             echo "=== All container logs ==="
-            docker compose -f docker-compose.test.yml logs 2>&1 | tail -60
+            docker compose -f docker-compose.test.yml logs 2>&1 | tail -80
             echo "FATAL: docker compose up -d exited with code $COMPOSE_EXIT"
             exit 1
           fi
@@ -301,17 +298,23 @@ jobs:
           done
 
       - name: Wait for Langfuse web (port 3000)
-        timeout-minutes: 6
+        # Langfuse runs Prisma migrations + Next.js warmup on first start — needs up to 12 min
+        timeout-minutes: 12
         run: |
-          echo "Waiting for langfuse-web..."
-          for i in $(seq 1 36); do
+          echo "Waiting for langfuse-web (Prisma migrations + Next.js warmup)..."
+          for i in $(seq 1 72); do
             CODE=$(curl -s -o /dev/null -w "%{http_code}" \
               --max-time 5 http://localhost:3000/api/public/health 2>/dev/null || echo "000")
-            echo "  attempt $i: HTTP $CODE"
+            echo "  attempt $i/72: HTTP $CODE"
             if [ "$CODE" = "200" ]; then echo "UP"; break; fi
-            if [ "$i" -eq 36 ]; then
-              echo "TIMEOUT"
-              docker compose -f docker-compose.test.yml logs langfuse-web | tail -60
+            # Print progress log every 10 attempts
+            if [ $((i % 10)) -eq 0 ]; then
+              echo "--- langfuse-web log tail (attempt $i) ---"
+              docker compose -f docker-compose.test.yml logs --tail=15 langfuse-web 2>/dev/null || true
+            fi
+            if [ "$i" -eq 72 ]; then
+              echo "TIMEOUT after 12 min"
+              docker compose -f docker-compose.test.yml logs langfuse-web | tail -80
               exit 1
             fi
             sleep 10
