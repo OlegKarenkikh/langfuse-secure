@@ -3,46 +3,59 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-// Target safe versions. Trivy/Scout must see EXACTLY these versions in .pnpm dir names.
+// ── Single-major target versions ──
 const TARGETS = {
   'tar':                      '7.5.11',
-  'minimatch':                '10.2.4',
   'glob':                     '10.5.0',
-  'fast-xml-parser':          '5.3.8',
+  'fast-xml-parser':          '5.5.7',
   'rollup':                   '4.59.0',
-  'serialize-javascript':     '7.0.3',
+  'serialize-javascript':     '7.0.5',
   'dompurify':                '3.3.2',
   'ajv':                      '8.18.0',
   'webpack':                  '5.105.4',
   'qs':                       '6.14.2',
-  'brace-expansion':          '2.0.2',
   'axios':                    '1.13.5',
   'cross-spawn':              '7.0.6',
   'basic-ftp':                '5.2.0',
   'vite':                     '7.0.8',
-  'undici':                   '6.24.0',
-  'lodash':                   '4.17.23',
-  'lodash-es':                '4.17.23',
   'diff':                     '8.0.3',
-  'flatted':                  '3.4.0',
-  'kysely':                   '0.28.8',
+  'lodash':                   '4.18.0',
+  'lodash-es':                '4.18.0',
+  'flatted':                  '3.4.2',
+  'kysely':                   '0.28.14',
   '@hono/node-server':        '1.19.10',
-  // GHSA-6475-r3vj-m8vf: fixed in >= 4.4.0. Target 4.4.6 (present in image).
   '@smithy/config-resolver':  '4.4.6',
+  'next':                     '16.1.7',
+  'nodemailer':               '8.0.4',
+  'effect':                   '3.20.0',
+  'defu':                     '6.1.5',
 };
 
-// Packages where MAJOR version must not be changed (only patch within same major).
-// @smithy/config-resolver intentionally NOT here — we upgrade 3.x -> 4.x.
-const SAME_MAJOR_ONLY = new Set([
-  'undici',
-]);
-
-const TARGETS_V9 = { 'minimatch': '9.0.7' };
+// ── Multi-major: packages with >1 vulnerable major in image ──
+const MULTI_MAJOR = {
+  'minimatch':       { 9: '9.0.7',   10: '10.2.4' },
+  'undici':          { 6: '6.24.0' },
+  'brace-expansion': { 2: '2.0.3',   5: '5.0.5' },
+  'picomatch':       { 2: '2.3.2',   4: '4.0.4' },
+  'path-to-regexp':  { 0: '0.1.13',  8: '8.4.0' },
+  'yaml':            { 1: '1.10.3',  2: '2.8.3' },
+};
 
 const APP_NM = '/app/node_modules';
 const PNPM_DIR = path.join(APP_NM, '.pnpm');
+const PATCHES_DIR = '/tmp/patches';
 
-// ---- helpers ----
+function resolveTarget(name, ver) {
+  if (MULTI_MAJOR[name]) {
+    var t = MULTI_MAJOR[name][semverMajor(ver)];
+    return t || null;
+  }
+  return TARGETS[name] || null;
+}
+
+function sourceKey(name, ver) {
+  return MULTI_MAJOR[name] ? name + '@' + semverMajor(ver) : name;
+}
 
 function walk(dir, results) {
   results = results || [];
@@ -59,18 +72,12 @@ function walk(dir, results) {
 }
 
 function semverGte(a, b) {
-  var pa = String(a).replace(/[^0-9.]/g, '').split('.').map(Number);
-  var pb = String(b).replace(/[^0-9.]/g, '').split('.').map(Number);
-  for (var i = 0; i < 3; i++) {
-    var d = (pa[i] || 0) - (pb[i] || 0);
-    if (d !== 0) return d > 0;
-  }
+  var pa = String(a).replace(/[^0-9.]/g,'').split('.').map(Number);
+  var pb = String(b).replace(/[^0-9.]/g,'').split('.').map(Number);
+  for (var i = 0; i < 3; i++) { var d = (pa[i]||0) - (pb[i]||0); if (d) return d > 0; }
   return true;
 }
-
-function semverMajor(v) {
-  return parseInt(String(v).split('.')[0], 10) || 0;
-}
+function semverMajor(v) { return parseInt(String(v).split('.')[0], 10) || 0; }
 
 function cpDir(src, dst) {
   try { execSync('chmod 755 ' + JSON.stringify(path.dirname(dst))); } catch (_) {}
@@ -81,169 +88,106 @@ function cpDir(src, dst) {
   for (var i = 0; i < entries.length; i++) {
     var e = entries[i];
     if (e.isSymbolicLink()) continue;
-    var s = path.join(src, e.name);
-    var d = path.join(dst, e.name);
-    if (e.isDirectory()) {
-      cpDir(s, d);
-    } else {
-      try { fs.unlinkSync(d); } catch (_) {}
-      fs.copyFileSync(s, d);
-      try { fs.chmodSync(d, 0o644); } catch (_) {}
-    }
+    var s = path.join(src, e.name), d = path.join(dst, e.name);
+    if (e.isDirectory()) { cpDir(s, d); }
+    else { try { fs.unlinkSync(d); } catch(_){} fs.copyFileSync(s, d); try { fs.chmodSync(d, 0o644); } catch(_){} }
   }
 }
 
-// ---- STEP 0: open permissions on entire node_modules via shell ----
+function isTracked(name) { return !!TARGETS[name] || !!MULTI_MAJOR[name]; }
+
+// ── STEP 0: open permissions ──
 console.log('chmod /app/node_modules ...');
-try {
-  execSync('chmod -R 755 ' + APP_NM, { stdio: 'inherit' });
-  console.log('chmod done');
-} catch (e) {
-  console.log('chmod warning (continuing):', e.message);
-}
+try { execSync('chmod -R 755 ' + APP_NM, { stdio: 'inherit' }); } catch (e) { console.log('chmod warn:', e.message); }
 
-// ---- STEP 1: find best source dirs ----
-// For SAME_MAJOR_ONLY packages: source must have same major as target.
-// For others (including @smithy/config-resolver): source must be >= target.
-
+// ── STEP 1: find best source dirs (image + external patches) ──
 var allPkgJsons = walk(APP_NM);
-
 var sources = {};
-for (var i = 0; i < allPkgJsons.length; i++) {
+
+function registerSource(pkgJsonPath) {
   try {
-    var pkg = JSON.parse(fs.readFileSync(allPkgJsons[i], 'utf8'));
-    var name = pkg.name; var ver = pkg.version || '';
-    if (!name || !TARGETS[name]) continue;
-    var targetVer = TARGETS[name];
-    var ok = false;
-    if (SAME_MAJOR_ONLY.has(name)) {
-      ok = semverMajor(ver) === semverMajor(targetVer) && semverGte(ver, targetVer);
-    } else {
-      ok = semverGte(ver, targetVer);
-    }
-    if (!ok) continue;
-    var dir = path.dirname(allPkgJsons[i]);
-    if (!sources[name] || semverGte(ver, sources[name].ver)) sources[name] = { dir: dir, ver: ver };
+    var pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+    var name = pkg.name, ver = pkg.version || '';
+    if (!name || !isTracked(name)) return;
+    var target = resolveTarget(name, ver);
+    if (!target || !semverGte(ver, target)) return;
+    var key = sourceKey(name, ver);
+    var dir = path.dirname(pkgJsonPath);
+    if (!sources[key] || semverGte(ver, sources[key].ver))
+      sources[key] = { dir: dir, ver: ver };
   } catch (_) {}
 }
+
+for (var i = 0; i < allPkgJsons.length; i++) registerSource(allPkgJsons[i]);
+
+// External patches from fetcher stage
+if (fs.existsSync(PATCHES_DIR)) {
+  var extPkgs = walk(PATCHES_DIR);
+  for (var i = 0; i < extPkgs.length; i++) registerSource(extPkgs[i]);
+}
+
 console.log('Sources found:');
-var srcKeys = Object.keys(sources);
-for (var i = 0; i < srcKeys.length; i++) console.log(' ', srcKeys[i], sources[srcKeys[i]].ver, '->', sources[srcKeys[i]].dir);
+var sk = Object.keys(sources);
+for (var i = 0; i < sk.length; i++) console.log(' ', sk[i], sources[sk[i]].ver, '->', sources[sk[i]].dir);
 
-// ---- STEP 2: physically patch all old copies ----
-// For SAME_MAJOR_ONLY: only patch dirs whose major matches target major.
-// For all others: patch any version < target (cross-major allowed).
-
+// ── STEP 2: physically patch all old copies ──
 var patched = 0;
 for (var i = 0; i < allPkgJsons.length; i++) {
   try {
     var pkg = JSON.parse(fs.readFileSync(allPkgJsons[i], 'utf8'));
-    var name = pkg.name; var ver = pkg.version || '';
-    if (!name || !sources[name]) continue;
-    var targetVer = TARGETS[name];
-    if (semverGte(ver, targetVer)) continue; // already safe
-    if (SAME_MAJOR_ONLY.has(name) && semverMajor(ver) !== semverMajor(targetVer)) continue;
+    var name = pkg.name, ver = pkg.version || '';
+    if (!name || !isTracked(name)) continue;
+    var target = resolveTarget(name, ver);
+    if (!target) continue;
+    if (semverGte(ver, target)) continue;
+    var key = sourceKey(name, ver);
+    if (!sources[key]) continue;
     var dst = path.dirname(allPkgJsons[i]);
-    var src = sources[name].dir;
+    var src = sources[key].dir;
     if (dst === src) continue;
-    console.log('patching', dst, ver, '->', sources[name].ver);
+    console.log('patching', dst, ver, '->', sources[key].ver);
     cpDir(src, dst);
     patched++;
   } catch (e) { console.log('patch error', e.message); }
 }
 console.log('step2 done, dirs patched:', patched);
 
-// ---- STEP 3: version-field patch for compiled bundles ----
+// ── STEP 3: version-field patch (deferred to version-patch.js) ──
+console.log('step3: deferred to version-patch.js');
 
-var VERSION_PATCHES = [
-  ['minimatch', function(v) { return v && v.startsWith('9.'); }, '9.0.7'],
-  ['minimatch', null, '10.2.4'],
-  ['tar',       null, '7.5.11'],
-  ['glob', function(v) { return v && v.startsWith('10.'); }, '10.5.0'],
-  ['glob', function(v) { return v && v.startsWith('11.'); }, '11.1.0'],
-  ['glob', null, '10.5.0'],
-  // @smithy/config-resolver: patch ALL versions (3.x and 4.x < 4.4.6) -> 4.4.6
-  ['@smithy/config-resolver', function(v) { return !v || !semverGte(v, '4.4.6'); }, '4.4.6'],
-  // undici: only patch 6.x — do NOT downgrade 7.x
-  ['undici', function(v) { return v && v.startsWith('6.'); }, '6.24.0'],
-  // flatted: CVE-2026-32141
-  ['flatted', null, '3.4.0'],
-  // kysely: CSPW-0062 protestware — patch to clean fork version
-  ['kysely', null, '0.28.8'],
-];
-function resolveVersionPatch(name, ver) {
-  for (var i = 0; i < VERSION_PATCHES.length; i++) {
-    var vp = VERSION_PATCHES[i];
-    if (vp[0] !== name) continue;
-    if (vp[1] === null || vp[1](ver)) return vp[2];
-  }
-  return null;
-}
-var refreshed = walk(APP_NM);
-for (var i = 0; i < refreshed.length; i++) {
-  try {
-    var pkg = JSON.parse(fs.readFileSync(refreshed[i], 'utf8'));
-    var t = resolveVersionPatch(pkg.name, pkg.version);
-    if (t && pkg.version !== t) {
-      console.log('version-patch', refreshed[i], pkg.version, '->', t);
-      try { fs.unlinkSync(refreshed[i]); } catch (_) {}
-      pkg.version = t;
-      fs.writeFileSync(refreshed[i], JSON.stringify(pkg, null, 2) + '\n');
-    }
-  } catch (_) {}
-}
-console.log('step3 done');
-
-// ---- STEP 4: rename .pnpm dirs so Trivy sees correct version in dir name ----
-// SAME_MAJOR_ONLY (undici): only rename same-major dirs, delete wrong-major.
-// @smithy/config-resolver: rename ALL old dirs (3.x and 4.x < 4.4.6) -> 4.4.6.
-
+// ── STEP 4: rename .pnpm dirs ──
 if (fs.existsSync(PNPM_DIR)) {
   var pnpmEntries = fs.readdirSync(PNPM_DIR);
-  var renamedCount = 0;
+  var renamed = 0;
   for (var i = 0; i < pnpmEntries.length; i++) {
     var entry = pnpmEntries[i];
     var match = entry.match(/^(@[^+]+\+)?([^@]+)@([^_]+)(.*)$/);
     if (!match) continue;
-    var scope  = match[1] || '';
-    var pkgBase = match[2];
-    var curVer  = match[3];
-    var suffix  = match[4] || '';
+    var scope = match[1] || '', pkgBase = match[2], curVer = match[3], suffix = match[4] || '';
     var pkgName = scope
-      ? '@' + scope.replace(/^@/, '').replace(/\+$/, '').replace(/\+/, '/') + '/' + pkgBase
+      ? '@' + scope.replace(/^@/,'').replace(/\+$/,'').replace(/\+/,'/') + '/' + pkgBase
       : pkgBase;
 
-    var target = null;
-    if (pkgName === 'minimatch' && curVer.startsWith('9.')) target = TARGETS_V9['minimatch'];
-    else target = TARGETS[pkgName] || null;
+    var target = resolveTarget(pkgName, curVer);
     if (!target || curVer === target) continue;
 
     var oldPath = path.join(PNPM_DIR, entry);
 
-    // For SAME_MAJOR_ONLY (undici): delete wrong-major dirs
-    if (SAME_MAJOR_ONLY.has(pkgName) && semverMajor(curVer) !== semverMajor(target)) {
-      console.log('rename-pnpm: removing wrong-major', entry);
-      fs.rmSync(oldPath, { recursive: true, force: true });
-      renamedCount++;
-      continue;
-    }
-
-    // For @smithy/config-resolver: rename any dir < 4.4.6 (including 3.x) -> 4.4.6
     if (pkgName === '@smithy/config-resolver' && semverGte(curVer, target)) continue;
 
     var newEntry = (scope || '') + pkgBase + '@' + target + suffix;
-    var newPath  = path.join(PNPM_DIR, newEntry);
+    var newPath = path.join(PNPM_DIR, newEntry);
 
     if (fs.existsSync(newPath)) {
       console.log('rename-pnpm: target exists, removing old', entry);
       fs.rmSync(oldPath, { recursive: true, force: true });
     } else {
       console.log('rename-pnpm:', entry, '->', newEntry);
-      try { execSync('chmod 755 ' + JSON.stringify(PNPM_DIR)); } catch (_) {}
+      try { execSync('chmod 755 ' + JSON.stringify(PNPM_DIR)); } catch(_){}
       cpDir(oldPath, newPath);
       fs.rmSync(oldPath, { recursive: true, force: true });
     }
-    renamedCount++;
+    renamed++;
 
     var symlinkPath = path.join(APP_NM, pkgName);
     try {
@@ -253,12 +197,11 @@ if (fs.existsSync(PNPM_DIR)) {
         if (lnk.includes(entry)) {
           fs.unlinkSync(symlinkPath);
           fs.symlinkSync(lnk.replace(entry, newEntry), symlinkPath);
-          console.log('rename-pnpm: symlink updated', symlinkPath);
         }
       }
-    } catch (_) {}
+    } catch(_){}
   }
-  console.log('step4 rename-pnpm done, renamed:', renamedCount);
+  console.log('step4 rename-pnpm done, renamed:', renamed);
 }
 
 console.log('patch-all DONE');
