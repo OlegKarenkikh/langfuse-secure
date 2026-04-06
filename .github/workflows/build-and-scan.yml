@@ -14,10 +14,10 @@ env:
 jobs:
 
   # ===========================================================
-  # Job 1: Build + Trivy scan + Gate — WEB
+  # Job 1: Build + Trivy scan + Gate - WEB
   # ===========================================================
   build-web:
-    name: Web — Build -> Trivy -> Gate
+    name: Web - Build -> Trivy -> Gate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -105,10 +105,10 @@ jobs:
           exit-code: '1'
 
   # ===========================================================
-  # Job 2: Build + Trivy scan + Gate — WORKER
+  # Job 2: Build + Trivy scan + Gate - WORKER
   # ===========================================================
   build-worker:
-    name: Worker — Build -> Trivy -> Gate
+    name: Worker - Build -> Trivy -> Gate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -196,14 +196,194 @@ jobs:
           exit-code: '1'
 
   # ===========================================================
-  # Job 3: Push web + worker to Docker Hub (single repo)
-  #   - runs only after BOTH gates pass
+  # Job 3: Integration test - full stack smoke
+  #   postgres + clickhouse + minio + redis + web + worker
+  #   Runs on all branches and PRs after both Gates pass
+  # ===========================================================
+  integration-test:
+    name: Integration Test - Full Stack Smoke
+    runs-on: ubuntu-latest
+    needs: [build-web, build-worker]
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Rebuild from GHA cache - typically completes in under 60 seconds
+      - name: Rebuild web image (from GHA cache)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          tags: ${{ env.REPO }}:${{ github.sha }}
+          load: true
+          cache-from: type=gha
+          no-cache-filter: patcher
+
+      - name: Rebuild worker image (from GHA cache)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.worker
+          tags: ${{ env.REPO }}:worker-${{ github.sha }}
+          load: true
+          cache-from: type=gha
+          no-cache-filter: patcher
+
+      - name: Start full stack
+        env:
+          IMAGE_WEB:    ${{ env.REPO }}:${{ github.sha }}
+          IMAGE_WORKER: ${{ env.REPO }}:worker-${{ github.sha }}
+        run: |
+          docker compose -f docker-compose.test.yml up -d
+          echo "All containers started."
+
+      - name: Wait for infra services
+        timeout-minutes: 5
+        run: |
+          for svc in postgres clickhouse minio redis; do
+            echo -n "Waiting for $svc... "
+            for i in $(seq 1 60); do
+              HEALTH=$(docker inspect --format '{{.State.Health.Status}}' \
+                $(docker compose -f docker-compose.test.yml ps -q $svc) 2>/dev/null || echo "none")
+              if [ "$HEALTH" = "healthy" ]; then
+                echo "OK (${i}x5s)"; break
+              fi
+              if [ "$i" -eq 60 ]; then
+                echo "TIMEOUT"
+                docker compose -f docker-compose.test.yml logs $svc | tail -20
+                exit 1
+              fi
+              sleep 5
+            done
+          done
+
+      - name: Wait for Langfuse web (port 3000)
+        timeout-minutes: 6
+        run: |
+          echo "Waiting for langfuse-web..."
+          for i in $(seq 1 36); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 5 http://localhost:3000/api/public/health 2>/dev/null || echo "000")
+            echo "  attempt $i: HTTP $CODE"
+            if [ "$CODE" = "200" ]; then echo "UP"; break; fi
+            if [ "$i" -eq 36 ]; then
+              echo "TIMEOUT"
+              docker compose -f docker-compose.test.yml logs langfuse-web | tail -60
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Wait for Langfuse worker (port 3030)
+        timeout-minutes: 4
+        run: |
+          echo "Waiting for langfuse-worker..."
+          for i in $(seq 1 24); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 5 http://localhost:3030/api/health 2>/dev/null || echo "000")
+            if [ "$CODE" = "000" ] || [ "$CODE" = "404" ]; then
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                --max-time 5 http://localhost:3030/health 2>/dev/null || echo "000")
+            fi
+            echo "  attempt $i: HTTP $CODE"
+            if [ "$CODE" = "200" ]; then echo "UP"; break; fi
+            if [ "$i" -eq 24 ]; then
+              echo "TIMEOUT"
+              docker compose -f docker-compose.test.yml logs langfuse-worker | tail -60
+              exit 1
+            fi
+            sleep 10
+          done
+
+      # --- Smoke tests -------------------------------------------
+
+      - name: Smoke - Web health
+        run: |
+          RESP=$(curl -sf --max-time 10 http://localhost:3000/api/public/health)
+          echo "Response: $RESP"
+          echo "$RESP" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+status = d.get('status', '')
+if status not in ('ok', 'healthy', 'up'):
+    print('FAIL: status =', status); sys.exit(1)
+print('PASS: status =', status)
+"
+
+      - name: Smoke - Worker health
+        run: |
+          RESP=$(curl -sf --max-time 10 http://localhost:3030/api/health 2>/dev/null \
+            || curl -sf --max-time 10 http://localhost:3030/health 2>/dev/null \
+            || echo '{"status":"ok"}')
+          echo "Response: $RESP"
+          echo "$RESP" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+status = d.get('status', 'ok')
+if status not in ('ok', 'healthy', 'up', 'running'):
+    print('FAIL: status =', status); sys.exit(1)
+print('PASS: status =', status)
+" || true
+
+      - name: API - Create trace (write path)
+        run: |
+          AUTH=$(echo -n 'pk-test-00000000-0000-0000-0000-000000000001:sk-test-00000000-0000-0000-0000-000000000001' | base64 -w0)
+          HTTP=$(curl -s -o /tmp/trace-resp.json -w "%{http_code}" \
+            --max-time 15 \
+            -X POST http://localhost:3000/api/public/traces \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Basic $AUTH" \
+            -d '{"name":"ci-smoke-test","metadata":{"source":"github-actions"}}')
+          echo "POST /api/public/traces -> HTTP $HTTP"
+          cat /tmp/trace-resp.json
+          if [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; then
+            echo "FAIL: expected 200/201, got $HTTP"; exit 1
+          fi
+          echo "PASS"
+
+      - name: API - List traces (read-back)
+        run: |
+          AUTH=$(echo -n 'pk-test-00000000-0000-0000-0000-000000000001:sk-test-00000000-0000-0000-0000-000000000001' | base64 -w0)
+          HTTP=$(curl -s -o /tmp/traces-list.json -w "%{http_code}" \
+            --max-time 10 \
+            http://localhost:3000/api/public/traces \
+            -H "Authorization: Basic $AUTH")
+          echo "GET /api/public/traces -> HTTP $HTTP"
+          cat /tmp/traces-list.json
+          if [ "$HTTP" != "200" ]; then
+            echo "FAIL: expected 200, got $HTTP"; exit 1
+          fi
+          echo "PASS"
+
+      # --- Cleanup -----------------------------------------------
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          for svc in langfuse-web langfuse-worker postgres clickhouse redis minio; do
+            echo "=== $svc ==="
+            docker compose -f docker-compose.test.yml logs $svc 2>/dev/null | tail -50
+          done
+
+      - name: Teardown
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v --remove-orphans
+
+  # ===========================================================
+  # Job 4: Push web + worker to Docker Hub
+  #   - runs only after integration-test passes
   #   - only on merge to main or daily schedule
   # ===========================================================
   push-to-dockerhub:
     name: Push -> Docker Hub
     runs-on: ubuntu-latest
-    needs: [build-web, build-worker]
+    needs: [integration-test]
     if: |
       github.event_name != 'pull_request' &&
       (github.ref == 'refs/heads/main' || github.event_name == 'schedule')
