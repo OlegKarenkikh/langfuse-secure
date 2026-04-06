@@ -109,9 +109,21 @@ function walkPkg(dir, results = []) {
   return results;
 }
 
-const roots = ['/app/node_modules','/usr/local/lib/node_modules/npm/node_modules'];
+// Detect all node_modules roots:
+//  - Web (Next.js standalone): /app/node_modules
+//  - Worker (yarn workspace):  /app/worker/node_modules
+//  - npm global (fallback):    /usr/local/lib/node_modules/npm/node_modules
+const ROOTS_CANDIDATES = [
+  '/app/node_modules',
+  '/app/worker/node_modules',
+  '/app/web/node_modules',
+  '/usr/local/lib/node_modules/npm/node_modules',
+];
+const roots = ROOTS_CANDIDATES.filter(r => fs.existsSync(r));
+console.log('version-patch roots:', roots);
+
 let all = [];
-for (const r of roots) if (fs.existsSync(r)) walkPkg(r, all);
+for (const r of roots) walkPkg(r, all);
 
 let count = 0;
 for (const f of all) {
