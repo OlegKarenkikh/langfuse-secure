@@ -49,7 +49,11 @@ const MULTI_MAJOR = {
   },
   'brace-expansion': { 2: '2.0.3', 5: '5.0.5', default: '5.0.5' },
   'picomatch':       { 2: '2.3.2', 4: '4.0.4', default: '4.0.4' },
-  'path-to-regexp':  { 0: '0.1.13', 8: '8.4.0', default: '8.4.0' },
+  // path-to-regexp: NO default — each major has its own safe version.
+  // IMPORTANT: 6.x must stay at 6.x (Next.js 16 requires ^6, v8 breaks the API).
+  // 7.x is fully vulnerable → bump to 8.0.0 minimum (8.4.0 for ReDoS fix).
+  // Do NOT add a 'default' key here — unknown majors must be left untouched.
+  'path-to-regexp':  { 0: '0.1.13', 1: '1.9.0', 3: '3.3.0', 6: '6.3.0', 7: '8.4.0', 8: '8.4.0' },
   'yaml':            { 1: '1.10.3', 2: '2.8.3', default: '2.8.3' },
 };
 
