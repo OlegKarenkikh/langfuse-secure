@@ -3,8 +3,9 @@
 # Infra images are official/chainguard; langfuse images are built locally
 # and injected via IMAGE_WEB / IMAGE_WORKER env vars.
 #
-# NOTE: cgr.dev/chainguard/minio is distroless (no shell/curl inside).
-# Its readiness is checked from the CI runner host in build-and-scan.yml.
+# NOTE: cgr.dev/chainguard/minio is distroless (no shell inside).
+# Its readiness is checked from the CI runner host in build-and-scan.yml
+# via curl http://localhost:9000/minio/health/live
 
 services:
 
@@ -43,11 +44,12 @@ services:
       - /var/lib/clickhouse
       - /var/log/clickhouse-server
 
-  # distroless image - no shell inside, healthcheck done from CI runner host
+  # distroless image - no shell inside.
+  # No entrypoint/command override - use the image default.
+  # MinIO auto-creates the data directory on startup.
+  # Readiness checked from CI runner host via curl on port 9000.
   minio:
     image: cgr.dev/chainguard/minio
-    entrypoint: sh
-    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: miniosecret
