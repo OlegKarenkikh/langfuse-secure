@@ -40,7 +40,7 @@ jobs:
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          no-cache-filters: patcher
+          no-cache-filters: fetcher,patcher
 
       - name: Trivy - Table (web)
         uses: aquasecurity/trivy-action@master
@@ -131,7 +131,7 @@ jobs:
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          no-cache-filters: patcher
+          no-cache-filters: fetcher,patcher
 
       - name: Trivy - Table (worker)
         uses: aquasecurity/trivy-action@master
@@ -221,7 +221,7 @@ jobs:
           tags: ${{ env.REPO }}:${{ github.sha }}
           load: true
           cache-from: type=gha
-          no-cache-filters: patcher
+          no-cache-filters: fetcher,patcher
 
       - name: Rebuild worker image (from GHA cache)
         uses: docker/build-push-action@v5
@@ -231,7 +231,7 @@ jobs:
           tags: ${{ env.REPO }}:worker-${{ github.sha }}
           load: true
           cache-from: type=gha
-          no-cache-filters: patcher
+          no-cache-filters: fetcher,patcher
 
       - name: Start full stack
         env:
@@ -466,7 +466,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          no-cache-filters: patcher
+          no-cache-filters: fetcher,patcher
           labels: |
             org.opencontainers.image.title=langfuse-secure
             org.opencontainers.image.source=https://github.com/OlegKarenkikh/langfuse-secure
@@ -484,7 +484,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          no-cache-filters: patcher
+          no-cache-filters: fetcher,patcher
           labels: |
             org.opencontainers.image.title=langfuse-worker-secure
             org.opencontainers.image.source=https://github.com/OlegKarenkikh/langfuse-secure
