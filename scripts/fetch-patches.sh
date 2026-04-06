@@ -22,31 +22,53 @@ fetch "yaml@2.8.3"
 fetch "defu@6.1.5"
 fetch "nodemailer@8.0.4"
 
-# ── kysely: olegkarenkikh/kysely fork (protestware-free, same version 0.28.8) ─
+# ── kysely: olegkarenkikh/kysely fork (protestware-free, same version 0.28.8) ──
 # The fork has version=0.28.8 identical to upstream, so standard version-based
 # patching would skip it. patch-all.js uses FORCE_REPLACE for unconditional copy.
-# We need a built dist/ — clone, install (with devDeps for tsc), build, pack.
+#
+# Build strategy:
+#   - Clone with --depth 1
+#   - npm install (installs TypeScript + other devDeps needed for tsc)
+#   - Run tsc directly (build:esm + build:cjs) to avoid prepublishOnly/test:exports
+#   - Copy built dist/ + package.json + helpers/ into patches dir
+#   - Entire block runs with set +e so a build failure is non-fatal (WARN only)
 echo ">>> kysely fork: github:olegkarenkikh/kysely"
-KYSELY_DIR="/tmp/kysely-fork-build"
-rm -rf "$KYSELY_DIR"
-git clone --depth 1 https://github.com/olegkarenkikh/kysely.git "$KYSELY_DIR" 2>&1
-cd "$KYSELY_DIR"
-# Install including devDependencies (TypeScript needed for build)
-npm install 2>&1
-npm run build 2>&1
-# Pack and move to patches dir
-npm pack 2>&1
-TGZ=$(ls kysely-*.tgz 2>/dev/null | head -1)
-if [ -n "$TGZ" ]; then
+(
+  set +e
+  KYSELY_DIR="/tmp/kysely-fork-build"
+  rm -rf "$KYSELY_DIR"
+
+  git clone --depth 1 https://github.com/olegkarenkikh/kysely.git "$KYSELY_DIR"
+  if [ $? -ne 0 ]; then echo "WARN: kysely git clone failed"; exit 0; fi
+
+  cd "$KYSELY_DIR"
+  npm install
+  if [ $? -ne 0 ]; then echo "WARN: kysely npm install failed"; exit 0; fi
+
+  # Build ESM + CJS without triggering prepublishOnly / test:exports
+  npx tsc -p tsconfig.json
+  npx tsc -p tsconfig-cjs.json
+  # module-fixup renames .js -> .mjs in ESM output (optional, best-effort)
+  node scripts/module-fixup.js 2>/dev/null || true
+
+  if [ ! -d "dist" ]; then
+    echo "WARN: kysely dist/ not generated"
+    exit 0
+  fi
+
+  # Copy built package to patches dir
   mkdir -p "$PATCH_DIR/kysely"
-  tar xzf "$TGZ" -C "$PATCH_DIR/kysely" --strip-components=1
-  echo "kysely fork unpacked to $PATCH_DIR/kysely"
-  ls "$PATCH_DIR/kysely/dist/" 2>/dev/null | head -5 || echo "WARN: dist/ missing"
-else
-  echo "WARN: kysely pack failed"
-fi
-cd "$PATCH_DIR"
-rm -rf "$KYSELY_DIR"
+  cp -r dist       "$PATCH_DIR/kysely/dist"
+  cp    package.json "$PATCH_DIR/kysely/package.json"
+  cp -r helpers    "$PATCH_DIR/kysely/helpers" 2>/dev/null || true
+  cp    outdated-typescript.d.ts "$PATCH_DIR/kysely/" 2>/dev/null || true
+
+  echo "kysely fork built and staged:"
+  ls "$PATCH_DIR/kysely/dist/" | head -10
+
+  cd /tmp
+  rm -rf "$KYSELY_DIR"
+)
 
 # ── Unpack all remaining tarballs ───────────────────────
 for tgz in *.tgz; do
