@@ -30,7 +30,7 @@ const TARGETS = {
   'defu':                     '6.1.5',
 };
 
-// Multi-major: 'default' key = fallback for unlisted majors
+// Multi-major: explicit majors only, no 'default' for undici (8.x+ untouched)
 const MULTI_MAJOR = {
   'minimatch': {
     3: '9.0.7', 4: '9.0.7', 5: '9.0.7',
@@ -38,9 +38,9 @@ const MULTI_MAJOR = {
     9: '9.0.7', 10: '10.2.4',
     default: '9.0.7',
   },
+  // undici: no 'default' — 8.x and above are already safe, must not be downgraded
   'undici': {
     4: '6.24.0', 5: '6.24.0', 6: '6.24.0', 7: '7.1.0',
-    default: '6.24.0',
   },
   'brace-expansion': { 2: '2.0.3', 5: '5.0.5', default: '5.0.5' },
   'picomatch':       { 2: '2.3.2', 4: '4.0.4', default: '4.0.4' },
