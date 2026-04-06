@@ -241,10 +241,10 @@ jobs:
           docker compose -f docker-compose.test.yml up -d
           echo "All containers started."
 
-      - name: Wait for infra services
+      - name: Wait for infra services (postgres, clickhouse, redis)
         timeout-minutes: 5
         run: |
-          for svc in postgres clickhouse minio redis; do
+          for svc in postgres clickhouse redis; do
             echo -n "Waiting for $svc... "
             for i in $(seq 1 60); do
               HEALTH=$(docker inspect --format '{{.State.Health.Status}}' \
@@ -259,6 +259,23 @@ jobs:
               fi
               sleep 5
             done
+          done
+
+      - name: Wait for MinIO (checked from host - distroless image has no shell)
+        timeout-minutes: 3
+        run: |
+          echo "Waiting for minio on localhost:9000..."
+          for i in $(seq 1 36); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 5 http://localhost:9000/minio/health/live 2>/dev/null || echo "000")
+            echo "  attempt $i: HTTP $CODE"
+            if [ "$CODE" = "200" ]; then echo "MinIO UP"; break; fi
+            if [ "$i" -eq 36 ]; then
+              echo "TIMEOUT waiting for MinIO"
+              docker compose -f docker-compose.test.yml logs minio | tail -20
+              exit 1
+            fi
+            sleep 5
           done
 
       - name: Wait for Langfuse web (port 3000)
