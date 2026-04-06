@@ -48,11 +48,11 @@ services:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: miniosecret
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 2s
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
       timeout: 5s
       retries: 15
-      start_period: 2s
+      start_period: 5s
     tmpfs:
       - /data
 
