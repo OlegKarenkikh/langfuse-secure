@@ -44,13 +44,14 @@ const patches = [
   // ── @smithy/config-resolver ────────────────────────────
   ['@smithy/config-resolver', v => !semverGte(v||'0','4.4.6'), '4.4.6'],
 
-  // ── undici: all relevant majors ───────────────────────────
+  // ── undici: explicit major ranges only — do NOT touch 8.x+ ──
   // 7.x gets own-major fix
-  ['undici', v => v && v.startsWith('7.'), '7.1.0'],
+  ['undici', v => v && v.startsWith('7.') && semverLt(v,'7.1.0'), '7.1.0'],
   // 6.x -> 6.24.0
-  ['undici', v => v && v.startsWith('6.'), '6.24.0'],
+  ['undici', v => v && v.startsWith('6.') && semverLt(v,'6.24.0'), '6.24.0'],
   // older majors (4.x 5.x) -> 6.24.0 floor
-  ['undici', null, '6.24.0'],
+  ['undici', v => v && (v.startsWith('4.') || v.startsWith('5.')), '6.24.0'],
+  // NOTE: no null fallback for undici — 8.x+ is already safe and must not be downgraded
 
   // ── async ──────────────────────────────────────────────
   ['async', v => v && semverLt(v,'3.2.6'), '3.2.6'],
