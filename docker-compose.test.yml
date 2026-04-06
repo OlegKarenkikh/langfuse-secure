@@ -4,8 +4,10 @@
 # and injected via IMAGE_WEB / IMAGE_WORKER env vars.
 #
 # NOTE: cgr.dev/chainguard/minio is distroless (no shell inside).
-# Its readiness is checked from the CI runner host in build-and-scan.yml
-# via curl http://localhost:9000/minio/health/live
+# - Must pass 'command: server /data' explicitly (no default CMD in image).
+# - tmpfs cannot be used: it mounts as root, but image runs as nonroot -> EACCES.
+#   Use a named Docker volume instead; Docker initialises it with correct ownership.
+# - Readiness is checked from the CI runner host via curl on port 9000.
 
 services:
 
@@ -45,18 +47,18 @@ services:
       - /var/log/clickhouse-server
 
   # distroless image - no shell inside.
-  # No entrypoint/command override - use the image default.
-  # MinIO auto-creates the data directory on startup.
-  # Readiness checked from CI runner host via curl on port 9000.
+  # command: server /data  is required (image has no default CMD).
+  # Named volume used so Docker sets correct ownership for nonroot user.
   minio:
     image: cgr.dev/chainguard/minio
+    command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: miniosecret
     ports:
       - "9000:9000"
-    tmpfs:
-      - /data
+    volumes:
+      - minio-data:/data
 
   redis:
     image: redis:7-alpine
@@ -178,3 +180,6 @@ services:
       timeout: 10s
       retries: 20
       start_period: 30s
+
+volumes:
+  minio-data:
