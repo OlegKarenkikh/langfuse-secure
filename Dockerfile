@@ -34,7 +34,8 @@ LABEL org.opencontainers.image.title="langfuse-secure" \
       org.opencontainers.image.licenses="MIT"
 WORKDIR /app
 COPY --from=patcher /app /app
-USER nonroot
+# Chainguard distroless images have no /etc/passwd — use numeric UID (nonroot=65532)
+USER 65532
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DOCKER_BUILD=0
