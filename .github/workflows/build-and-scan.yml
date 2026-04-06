@@ -238,7 +238,29 @@ jobs:
           IMAGE_WEB: ${{ env.REPO }}:${{ github.sha }}
           IMAGE_WORKER: ${{ env.REPO }}:worker-${{ github.sha }}
         run: |
-          docker compose -f docker-compose.test.yml up -d
+          echo "=== docker compose config (validate) ==="
+          docker compose -f docker-compose.test.yml config --quiet
+          echo "Config OK"
+
+          echo "=== Pulling infra images ==="
+          docker compose -f docker-compose.test.yml pull postgres clickhouse minio redis 2>&1 || true
+
+          echo "=== Starting stack ==="
+          docker compose -f docker-compose.test.yml up -d 2>&1
+          COMPOSE_EXIT=$?
+
+          echo "=== Container states after up ==="
+          docker compose -f docker-compose.test.yml ps -a
+
+          echo "=== minio logs ==="
+          docker compose -f docker-compose.test.yml logs minio 2>&1 | tail -30
+
+          if [ "$COMPOSE_EXIT" -ne 0 ]; then
+            echo "=== All container logs ==="
+            docker compose -f docker-compose.test.yml logs 2>&1 | tail -60
+            echo "FATAL: docker compose up -d exited with code $COMPOSE_EXIT"
+            exit 1
+          fi
           echo "All containers started."
 
       - name: Wait for infra services (postgres, clickhouse, redis)
@@ -272,7 +294,7 @@ jobs:
             if [ "$CODE" = "200" ]; then echo "MinIO UP"; break; fi
             if [ "$i" -eq 36 ]; then
               echo "TIMEOUT waiting for MinIO"
-              docker compose -f docker-compose.test.yml logs minio | tail -20
+              docker compose -f docker-compose.test.yml logs minio | tail -30
               exit 1
             fi
             sleep 5
