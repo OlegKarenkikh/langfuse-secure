@@ -260,6 +260,17 @@ jobs:
           fi
           echo "All containers started."
 
+      - name: Early web log dump (30s after start)
+        run: |
+          echo "Waiting 30s for initial startup output..."
+          sleep 30
+          echo "=== langfuse-web logs (first 30s) ==="
+          docker compose -f docker-compose.test.yml logs --tail=100 langfuse-web 2>/dev/null || true
+          echo "=== langfuse-worker logs (first 30s) ==="
+          docker compose -f docker-compose.test.yml logs --tail=50 langfuse-worker 2>/dev/null || true
+          echo "=== Container states ==="
+          docker compose -f docker-compose.test.yml ps -a
+
       - name: Wait for infra services (postgres, clickhouse, redis)
         timeout-minutes: 5
         run: |
@@ -310,11 +321,13 @@ jobs:
             # Print progress log every 10 attempts
             if [ $((i % 10)) -eq 0 ]; then
               echo "--- langfuse-web log tail (attempt $i) ---"
-              docker compose -f docker-compose.test.yml logs --tail=15 langfuse-web 2>/dev/null || true
+              docker compose -f docker-compose.test.yml logs --tail=30 langfuse-web 2>/dev/null || true
+              echo "--- container state ---"
+              docker compose -f docker-compose.test.yml ps -a 2>/dev/null || true
             fi
             if [ "$i" -eq 72 ]; then
-              echo "TIMEOUT after 12 min"
-              docker compose -f docker-compose.test.yml logs langfuse-web | tail -80
+              echo "TIMEOUT after 12 min — full web log:"
+              docker compose -f docker-compose.test.yml logs langfuse-web 2>/dev/null | tail -150
               exit 1
             fi
             sleep 10
@@ -395,7 +408,7 @@ jobs:
         run: |
           for svc in langfuse-web langfuse-worker postgres clickhouse redis minio; do
             echo "=== $svc ==="
-            docker compose -f docker-compose.test.yml logs $svc 2>/dev/null | tail -50
+            docker compose -f docker-compose.test.yml logs $svc 2>/dev/null | tail -80
           done
 
       - name: Teardown
