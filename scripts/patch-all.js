@@ -48,8 +48,18 @@ const MULTI_MAJOR = {
   'yaml':            { 1: '1.10.3', 2: '2.8.3', default: '2.8.3' },
 };
 
-const APP_NM = '/app/node_modules';
-const PNPM_DIR = path.join(APP_NM, '.pnpm');
+// Detect node_modules root: Web uses /app/node_modules (Next.js standalone),
+// Worker uses /app/worker/node_modules (yarn monorepo workspace)
+const APP_NM_CANDIDATES = [
+  '/app/node_modules',
+  '/app/worker/node_modules',
+  '/app/web/node_modules',
+];
+const APP_NM_ROOTS = APP_NM_CANDIDATES.filter(p => fs.existsSync(p));
+
+// Primary root for pnpm store (only relevant for Web)
+const PRIMARY_NM = APP_NM_ROOTS[0] || '/app/node_modules';
+const PNPM_DIR = path.join(PRIMARY_NM, '.pnpm');
 const PATCHES_DIR = '/tmp/patches';
 
 function resolveTarget(name, ver) {
@@ -105,10 +115,13 @@ function cpDir(src, dst) {
 
 function isTracked(name) { return !!TARGETS[name] || !!MULTI_MAJOR[name]; }
 
-console.log('chmod /app/node_modules ...');
-try { execSync('chmod -R 755 ' + APP_NM, { stdio: 'inherit' }); } catch (e) { console.log('chmod warn:', e.message); }
+console.log('APP_NM roots detected:', APP_NM_ROOTS);
+for (var r = 0; r < APP_NM_ROOTS.length; r++) {
+  try { execSync('chmod -R 755 ' + JSON.stringify(APP_NM_ROOTS[r]), { stdio: 'inherit' }); } catch (e) { console.log('chmod warn:', e.message); }
+}
 
-var allPkgJsons = walk(APP_NM);
+var allPkgJsons = [];
+for (var r = 0; r < APP_NM_ROOTS.length; r++) allPkgJsons = allPkgJsons.concat(walk(APP_NM_ROOTS[r]));
 var sources = {};
 
 function registerSource(pkgJsonPath) {
@@ -161,6 +174,7 @@ for (var i = 0; i < allPkgJsons.length; i++) {
 console.log('step2 done, dirs patched:', patched);
 console.log('step3: deferred to version-patch.js');
 
+// step4: rename pnpm store entries (only relevant when .pnpm dir exists — Web only)
 if (fs.existsSync(PNPM_DIR)) {
   var pnpmEntries = fs.readdirSync(PNPM_DIR);
   var renamed = 0;
@@ -193,7 +207,7 @@ if (fs.existsSync(PNPM_DIR)) {
     }
     renamed++;
 
-    var symlinkPath = path.join(APP_NM, pkgName);
+    var symlinkPath = path.join(PRIMARY_NM, pkgName);
     try {
       var stat = fs.lstatSync(symlinkPath);
       if (stat.isSymbolicLink()) {
@@ -206,6 +220,8 @@ if (fs.existsSync(PNPM_DIR)) {
     } catch(_){}
   }
   console.log('step4 rename-pnpm done, renamed:', renamed);
+} else {
+  console.log('step4: no .pnpm dir (yarn/npm flat install), skipping rename-pnpm');
 }
 
 console.log('patch-all DONE');
