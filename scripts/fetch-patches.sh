@@ -22,23 +22,33 @@ fetch "yaml@2.8.3"
 fetch "defu@6.1.5"
 fetch "nodemailer@8.0.4"
 
-# ── kysely: olegkarenkikh/kysely fork (no protestware) ───
-echo ">>> kysely from github:olegkarenkikh/kysely"
-npm pack "github:olegkarenkikh/kysely" 2>/dev/null || {
-  echo "WARN: npm pack failed, trying git clone..."
-  cd /tmp
-  git clone --depth 1 https://github.com/olegkarenkikh/kysely.git kysely-fork 2>/dev/null || true
-  if [ -d kysely-fork ]; then
-    cd kysely-fork
-    npm install --ignore-scripts 2>/dev/null || true
-    npm run build 2>/dev/null || true
-    npm pack 2>/dev/null || true
-    mv *.tgz "$PATCH_DIR/" 2>/dev/null || true
-  fi
-  cd "$PATCH_DIR"
-}
+# ── kysely: olegkarenkikh/kysely fork (protestware-free, same version 0.28.8) ─
+# The fork has version=0.28.8 identical to upstream, so standard version-based
+# patching would skip it. patch-all.js uses FORCE_REPLACE for unconditional copy.
+# We need a built dist/ — clone, install (with devDeps for tsc), build, pack.
+echo ">>> kysely fork: github:olegkarenkikh/kysely"
+KYSELY_DIR="/tmp/kysely-fork-build"
+rm -rf "$KYSELY_DIR"
+git clone --depth 1 https://github.com/olegkarenkikh/kysely.git "$KYSELY_DIR" 2>&1
+cd "$KYSELY_DIR"
+# Install including devDependencies (TypeScript needed for build)
+npm install 2>&1
+npm run build 2>&1
+# Pack and move to patches dir
+npm pack 2>&1
+TGZ=$(ls kysely-*.tgz 2>/dev/null | head -1)
+if [ -n "$TGZ" ]; then
+  mkdir -p "$PATCH_DIR/kysely"
+  tar xzf "$TGZ" -C "$PATCH_DIR/kysely" --strip-components=1
+  echo "kysely fork unpacked to $PATCH_DIR/kysely"
+  ls "$PATCH_DIR/kysely/dist/" 2>/dev/null | head -5 || echo "WARN: dist/ missing"
+else
+  echo "WARN: kysely pack failed"
+fi
+cd "$PATCH_DIR"
+rm -rf "$KYSELY_DIR"
 
-# ── Unpack all tarballs ──────────────────────────────────
+# ── Unpack all remaining tarballs ───────────────────────
 for tgz in *.tgz; do
   [ -f "$tgz" ] || continue
   d="${tgz%.tgz}"; mkdir -p "$d"

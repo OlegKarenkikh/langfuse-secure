@@ -21,13 +21,18 @@ const TARGETS = {
   'lodash':                   '4.18.0',
   'lodash-es':                '4.18.0',
   'flatted':                  '3.4.2',
-  'kysely':                   '0.28.14',
   '@hono/node-server':        '1.19.10',
   '@smithy/config-resolver':  '4.4.6',
   'next':                     '16.1.7',
   'nodemailer':               '8.0.4',
   'effect':                   '3.20.0',
   'defu':                     '6.1.5',
+};
+
+// Packages replaced unconditionally (fork/patched builds — version equality does not mean same content)
+// Key: package name, Value: directory name under /tmp/patches/
+const FORCE_REPLACE = {
+  'kysely': 'kysely',
 };
 
 // Multi-major: explicit majors only, no 'default' for undici (8.x+ untouched)
@@ -119,6 +124,67 @@ console.log('APP_NM roots detected:', APP_NM_ROOTS);
 for (var r = 0; r < APP_NM_ROOTS.length; r++) {
   try { execSync('chmod -R 755 ' + JSON.stringify(APP_NM_ROOTS[r]), { stdio: 'inherit' }); } catch (e) { console.log('chmod warn:', e.message); }
 }
+
+// ── Step 0: FORCE_REPLACE — unconditional fork replacements ──────────────────
+// These packages are replaced regardless of version because the fork/patch
+// has the same version number as the vulnerable original (e.g. kysely 0.28.8).
+console.log('step0: force-replace (fork packages)...');
+var forceReplaced = 0;
+var frNames = Object.keys(FORCE_REPLACE);
+for (var fi = 0; fi < frNames.length; fi++) {
+  var frName = frNames[fi];
+  var frPatchDir = path.join(PATCHES_DIR, FORCE_REPLACE[frName]);
+  if (!fs.existsSync(frPatchDir)) {
+    console.log('  WARN: patch dir not found for', frName, '->', frPatchDir);
+    continue;
+  }
+  // Find all installed copies in node_modules roots
+  for (var r = 0; r < APP_NM_ROOTS.length; r++) {
+    var pkgJsons = walk(APP_NM_ROOTS[r]);
+    for (var pi = 0; pi < pkgJsons.length; pi++) {
+      try {
+        var pkg = JSON.parse(fs.readFileSync(pkgJsons[pi], 'utf8'));
+        if (pkg.name !== frName) continue;
+        var dst = path.dirname(pkgJsons[pi]);
+        if (dst === frPatchDir) continue;
+        console.log('  force-replacing', dst, '(v' + pkg.version + ') <- fork', frPatchDir);
+        cpDir(frPatchDir, dst);
+        forceReplaced++;
+      } catch (_) {}
+    }
+  }
+  // Also replace in .pnpm store if present
+  if (fs.existsSync(PNPM_DIR)) {
+    var pnpmEntries = fs.readdirSync(PNPM_DIR);
+    for (var pi = 0; pi < pnpmEntries.length; pi++) {
+      var entry = pnpmEntries[pi];
+      // Match entries like "kysely@0.28.8_..."
+      if (!entry.startsWith(frName + '@')) continue;
+      var entryPath = path.join(PNPM_DIR, entry);
+      // Find package.json inside the pnpm store entry (node_modules/kysely)
+      var innerPkg = path.join(entryPath, 'node_modules', frName);
+      if (fs.existsSync(innerPkg)) {
+        console.log('  force-replacing pnpm store inner:', innerPkg);
+        cpDir(frPatchDir, innerPkg);
+        forceReplaced++;
+      } else {
+        // Flat store entry (no nested node_modules)
+        var innerPkgJson = path.join(entryPath, 'package.json');
+        if (fs.existsSync(innerPkgJson)) {
+          try {
+            var ep = JSON.parse(fs.readFileSync(innerPkgJson, 'utf8'));
+            if (ep.name === frName) {
+              console.log('  force-replacing pnpm store flat:', entryPath);
+              cpDir(frPatchDir, entryPath);
+              forceReplaced++;
+            }
+          } catch (_) {}
+        }
+      }
+    }
+  }
+}
+console.log('step0 done, force-replaced:', forceReplaced);
 
 var allPkgJsons = [];
 for (var r = 0; r < APP_NM_ROOTS.length; r++) allPkgJsons = allPkgJsons.concat(walk(APP_NM_ROOTS[r]));
