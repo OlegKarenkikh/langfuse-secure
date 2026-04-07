@@ -85,15 +85,28 @@ function sourceKey(name, ver) {
   return name + '@target-' + (resolveTarget(name, ver) || 'unknown');
 }
 
-function walk(dir, results) {
+// walk: follow symlinks one level so pnpm virtual-store symlinks are visible.
+// We intentionally do NOT recurse into symlinked directories (cycle-safe: only
+// the direct symlink is followed, never a symlink found inside a resolved dir).
+function walk(dir, results, _depth) {
   results = results || [];
+  _depth = _depth || 0;
   var entries;
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return results; }
   for (var i = 0; i < entries.length; i++) {
     var e = entries[i];
-    if (e.isSymbolicLink()) continue;
     var full = path.join(dir, e.name);
-    if (e.isDirectory()) walk(full, results);
+    if (e.isSymbolicLink()) {
+      // Follow symlink one level only (avoid infinite loops in pnpm virtual store)
+      if (_depth > 0) continue;
+      var real;
+      try { real = fs.realpathSync(full); } catch (_) { continue; }
+      var stat;
+      try { stat = fs.statSync(real); } catch (_) { continue; }
+      if (stat.isDirectory()) walk(real, results, _depth + 1);
+      continue;
+    }
+    if (e.isDirectory()) walk(full, results, _depth);
     else if (e.isFile() && e.name === 'package.json') results.push(full);
   }
   return results;
@@ -130,8 +143,6 @@ for (var r = 0; r < APP_NM_ROOTS.length; r++) {
 }
 
 // ── Step 0: FORCE_REPLACE — unconditional fork replacements ──────────────────
-// These packages are replaced regardless of version because the fork/patch
-// has the same version number as the vulnerable original (e.g. kysely 0.28.8).
 console.log('step0: force-replace (fork packages)...');
 var forceReplaced = 0;
 var frNames = Object.keys(FORCE_REPLACE);
@@ -142,7 +153,6 @@ for (var fi = 0; fi < frNames.length; fi++) {
     console.log('  WARN: patch dir not found for', frName, '->', frPatchDir);
     continue;
   }
-  // Find all installed copies in node_modules roots
   for (var r = 0; r < APP_NM_ROOTS.length; r++) {
     var pkgJsons = walk(APP_NM_ROOTS[r]);
     for (var pi = 0; pi < pkgJsons.length; pi++) {
@@ -157,22 +167,18 @@ for (var fi = 0; fi < frNames.length; fi++) {
       } catch (_) {}
     }
   }
-  // Also replace in .pnpm store if present
   if (fs.existsSync(PNPM_DIR)) {
     var pnpmEntries = fs.readdirSync(PNPM_DIR);
     for (var pi = 0; pi < pnpmEntries.length; pi++) {
       var entry = pnpmEntries[pi];
-      // Match entries like "kysely@0.28.8_..."
       if (!entry.startsWith(frName + '@')) continue;
       var entryPath = path.join(PNPM_DIR, entry);
-      // Find package.json inside the pnpm store entry (node_modules/kysely)
       var innerPkg = path.join(entryPath, 'node_modules', frName);
       if (fs.existsSync(innerPkg)) {
         console.log('  force-replacing pnpm store inner:', innerPkg);
         cpDir(frPatchDir, innerPkg);
         forceReplaced++;
       } else {
-        // Flat store entry (no nested node_modules)
         var innerPkgJson = path.join(entryPath, 'package.json');
         if (fs.existsSync(innerPkgJson)) {
           try {
@@ -244,7 +250,9 @@ for (var i = 0; i < allPkgJsons.length; i++) {
 console.log('step2 done, dirs patched:', patched);
 console.log('step3: deferred to version-patch.js');
 
-// step4: rename pnpm store entries (only relevant when .pnpm dir exists — Web only)
+// step4: rename pnpm store entries AND overwrite file contents with patched source.
+// BUG THAT WAS HERE: renaming the directory is not enough — the files inside still
+// contain the old (vulnerable) version. After rename we must cpDir from sources.
 if (fs.existsSync(PNPM_DIR)) {
   var pnpmEntries = fs.readdirSync(PNPM_DIR);
   var renamed = 0;
@@ -277,6 +285,21 @@ if (fs.existsSync(PNPM_DIR)) {
     }
     renamed++;
 
+    // KEY FIX: after rename, overwrite the actual package files with the patched
+    // source. Without this, the directory has the correct name but old file content.
+    var patchKey = sourceKey(pkgName, curVer);
+    var patchSrc = sources[patchKey] ? sources[patchKey].dir : null;
+    if (patchSrc) {
+      // pnpm stores the package under node_modules/<pkgName> inside the entry dir,
+      // OR directly at the entry dir root for flat virtual stores.
+      var innerDst = path.join(newPath, 'node_modules', pkgName);
+      if (!fs.existsSync(innerDst)) innerDst = newPath;
+      console.log('rename-pnpm: overwriting contents of', innerDst, 'with', patchSrc);
+      cpDir(patchSrc, innerDst);
+    } else {
+      console.log('rename-pnpm: WARN no patch source for', pkgName, curVer, '-> target', target);
+    }
+
     var symlinkPath = path.join(PRIMARY_NM, pkgName);
     try {
       var stat = fs.lstatSync(symlinkPath);
@@ -285,6 +308,7 @@ if (fs.existsSync(PNPM_DIR)) {
         if (lnk.includes(entry)) {
           fs.unlinkSync(symlinkPath);
           fs.symlinkSync(lnk.replace(entry, newEntry), symlinkPath);
+          console.log('rename-pnpm: updated symlink', symlinkPath, '->', lnk.replace(entry, newEntry));
         }
       }
     } catch(_){}
