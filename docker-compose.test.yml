@@ -83,6 +83,10 @@ services:
     ports:
       - "3000:3000"
     environment:
+      # --- debug: expose full stack trace for "ignore-listed frames" errors ---
+      NODE_OPTIONS: "--stack-trace-limit=100"
+      NODE_NO_WARNINGS: "0"
+      # -----------------------------------------------------------------------
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
       NEXTAUTH_URL: http://localhost:3000
       NEXTAUTH_SECRET: testsecret-not-for-production
