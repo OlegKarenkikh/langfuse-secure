@@ -15,22 +15,13 @@ USER root
 WORKDIR /app
 COPY scripts/patch-all.js /tmp/patch-all.js
 COPY scripts/version-patch.js /tmp/version-patch.js
+COPY scripts/diag.js /tmp/diag.js
 RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     --mount=type=bind,from=fetcher,source=/tmp/patches,target=/tmp/patches \
     cp -a /mnt/source/. /app && \
     node /tmp/patch-all.js && \
     node /tmp/version-patch.js && \
-    echo "=== POST-PATCH: all path-to-regexp versions ===" && \
-    find /app -name package.json -not -path "*/node_modules/*/node_modules/*" \
-      | xargs grep -l '"path-to-regexp"' 2>/dev/null | head -3 || true && \
-    find /app -path "*/path-to-regexp/package.json" \
-      | xargs node -e "
-        var fs=require('fs'),args=process.argv.slice(1);
-        args.forEach(function(f){
-          try{var p=JSON.parse(fs.readFileSync(f));console.log(p.version,f);}catch(e){}
-        });
-      " 2>/dev/null | sort | head -40 && \
-    echo "=== END path-to-regexp versions ===" && \
+    node /tmp/diag.js && \
     find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
     find /app -path "*/esbuild/bin/esbuild" -delete 2>/dev/null; \
     find /app -name "esbuild" -type f -perm /111 -delete 2>/dev/null; \
