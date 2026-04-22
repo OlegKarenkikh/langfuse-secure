@@ -55,4 +55,5 @@ ENV DOCKER_BUILD=0
 ENV NEXT_MANUAL_SIG_HANDLE=true
 ENV PORT=3000
 EXPOSE 3000
-CMD ["./web/server.js", "--keepAliveTimeout", "110000"]
+ENTRYPOINT ["dumb-init", "--", "/bin/sh", "/app/web/entrypoint.sh"]
+CMD ["/bin/sh", "-c", "node ./web/server.js --keepAliveTimeout 110000"]

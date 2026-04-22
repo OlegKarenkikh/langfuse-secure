@@ -39,4 +39,5 @@ USER 65532
 ENV NODE_ENV=production
 ENV PORT=3030
 EXPOSE 3030
-CMD ["./worker/dist/index.js"]
+ENTRYPOINT ["dumb-init", "--", "/bin/sh", "/app/worker/entrypoint.sh"]
+CMD ["node", "worker/dist/index.js"]
