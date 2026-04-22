@@ -20,6 +20,7 @@ FROM cgr.dev/chainguard/node:latest AS patcher
 USER root
 WORKDIR /app
 COPY scripts/patch-all.js /tmp/patch-all.js
+COPY scripts/download-prisma-engine.js /tmp/download-prisma-engine.js
 COPY scripts/version-patch.js /tmp/version-patch.js
 COPY scripts/brute-fix-ptr.js /tmp/brute-fix-ptr.js
 COPY scripts/diag.js /tmp/diag.js
@@ -28,6 +29,7 @@ RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     cp -a /mnt/source/. /app && \
     node /tmp/patch-all.js && \
     node /tmp/version-patch.js && \
+    node /tmp/download-prisma-engine.js && \
     node /tmp/brute-fix-ptr.js && \
     node /tmp/diag.js && \
     find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
