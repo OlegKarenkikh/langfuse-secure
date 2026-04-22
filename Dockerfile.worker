@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Stage 1: source
+# Stage 1: source — official langfuse-worker:3 image
 FROM langfuse/langfuse-worker:3 AS source
 
 # Stage 2: fetcher — downloads fixed npm packages + kysely fork
@@ -27,14 +27,13 @@ RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     find /app -path "*/monorepo-symlink-test*" -maxdepth 10 -type d -exec rm -rf {} + 2>/dev/null; \
     true
 
-# Stage 4: runtime
+# Stage 4: runtime — distroless Chainguard node
 FROM cgr.dev/chainguard/node:latest
 LABEL org.opencontainers.image.title="langfuse-worker-secure" \
       org.opencontainers.image.source="https://github.com/OlegKarenkikh/langfuse-secure" \
       org.opencontainers.image.licenses="MIT"
 WORKDIR /app
 COPY --from=patcher /app /app
-# Chainguard distroless images have no /etc/passwd — use numeric UID (nonroot=65532)
 USER 65532
 ENV NODE_ENV=production
 ENV PORT=3030

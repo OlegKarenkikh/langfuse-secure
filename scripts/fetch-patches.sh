@@ -9,6 +9,7 @@ fetch "lodash-es@4.18.0"
 fetch "fast-xml-parser@5.5.7"
 fetch "flatted@3.4.2"
 fetch "serialize-javascript@7.0.5"
+fetch "brace-expansion@1.1.13"
 fetch "brace-expansion@2.0.3"
 fetch "brace-expansion@5.0.5"
 fetch "picomatch@2.3.2"
@@ -22,7 +23,10 @@ fetch "effect@3.20.0"
 fetch "yaml@1.10.3"
 fetch "yaml@2.8.3"
 fetch "defu@6.1.5"
-fetch "nodemailer@8.0.4"
+fetch "nodemailer@8.0.5"
+fetch "@hono/node-server@1.19.14"
+fetch "dompurify@3.4.1"
+fetch "langsmith@0.5.21"
 
 # ── kysely: olegkarenkikh/kysely fork (protestware-free, same version 0.28.8) ──
 # The fork has version=0.28.8 identical to upstream, so standard version-based
@@ -44,7 +48,7 @@ echo ">>> kysely fork: github:olegkarenkikh/kysely"
   if [ $? -ne 0 ]; then echo "WARN: kysely git clone failed"; exit 0; fi
 
   cd "$KYSELY_DIR"
-  npm install
+  npm install --ignore-scripts
   if [ $? -ne 0 ]; then echo "WARN: kysely npm install failed"; exit 0; fi
 
   # Build ESM + CJS without triggering prepublishOnly / test:exports

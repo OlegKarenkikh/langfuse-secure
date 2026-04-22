@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Stage 1: source
+# Stage 1: source — official langfuse:3 image
 FROM langfuse/langfuse:3 AS source
 
 # Stage 2: fetcher — downloads fixed npm packages + kysely fork
@@ -9,7 +9,11 @@ WORKDIR /tmp/patches
 COPY scripts/fetch-patches.sh /tmp/fetch-patches.sh
 RUN chmod +x /tmp/fetch-patches.sh && bash /tmp/fetch-patches.sh
 
-# Stage 3: patcher (Chainguard — zero OS CVE)
+# Stage 3: build fresh golang-migrate binary with Go 1.26.2 (fixes all Go stdlib CVEs)
+FROM golang:1.26.2-alpine AS migrate-builder
+RUN go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.1
+
+# Stage 4: patcher (Chainguard — zero OS CVE)
 FROM cgr.dev/chainguard/node:latest AS patcher
 USER root
 WORKDIR /app
@@ -31,14 +35,15 @@ RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     find /app -path "*/monorepo-symlink-test*" -maxdepth 10 -type d -exec rm -rf {} + 2>/dev/null; \
     true
 
-# Stage 4: runtime
+# Stage 5: runtime — distroless Chainguard node
 FROM cgr.dev/chainguard/node:latest
 LABEL org.opencontainers.image.title="langfuse-secure" \
       org.opencontainers.image.source="https://github.com/OlegKarenkikh/langfuse-secure" \
       org.opencontainers.image.licenses="MIT"
 WORKDIR /app
 COPY --from=patcher /app /app
-# Chainguard distroless images have no /etc/passwd — use numeric UID (nonroot=65532)
+# Replace migrate binary with freshly compiled Go 1.26.2 binary (fixes CVE-2026-25679 etc.)
+COPY --from=migrate-builder /go/bin/migrate /app/bin/migrate
 USER 65532
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

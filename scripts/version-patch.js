@@ -13,11 +13,8 @@ function semverLt(a, b) { return !semverGte(a, b); }
 
 const patches = [
   // ── minimatch: all majors covered ─────────────────────────────
-  // 9.x -> 9.0.7 (same-major fix)
   ['minimatch', v => v && v.startsWith('9.'), '9.0.7'],
-  // 10.x -> 10.2.4
   ['minimatch', v => v && v.startsWith('10.'), '10.2.4'],
-  // everything else (3.x 4.x 5.x 6.x 7.x 8.x ...) -> 9.0.7 as safe target
   ['minimatch', null, '9.0.7'],
 
   // ── tar / glob ─────────────────────────────────────────
@@ -27,7 +24,7 @@ const patches = [
   ['glob', null, '10.5.0'],
 
   // ── misc (single-target) ───────────────────────────────
-  ['dompurify',            null, '3.3.2'],
+  ['dompurify',            null, '3.4.1'],
   ['ajv',                  null, '8.18.0'],
   ['webpack',              null, '5.105.4'],
   ['vite',                 null, '7.0.8'],
@@ -39,33 +36,33 @@ const patches = [
   ['cross-spawn',          null, '7.0.6'],
   ['basic-ftp',            null, '5.2.0'],
   ['@tootallnate/once',    null, '3.0.1'],
-  ['@hono/node-server',    null, '1.19.10'],
+  ['@hono/node-server',    v => v && v.startsWith('1.'), '1.19.14'],
+  ['langsmith',            null, '0.5.21'],
 
   // ── @smithy/config-resolver ────────────────────────────
   ['@smithy/config-resolver', v => !semverGte(v||'0','4.4.6'), '4.4.6'],
 
-  // ── undici: explicit major ranges only — do NOT touch 8.x+ ──
-  // 7.x gets own-major fix
+  // ── undici: explicit major ranges only ──
   ['undici', v => v && v.startsWith('7.') && semverLt(v,'7.1.0'), '7.1.0'],
-  // 6.x -> 6.24.0
   ['undici', v => v && v.startsWith('6.') && semverLt(v,'6.24.0'), '6.24.0'],
-  // older majors (4.x 5.x) -> 6.24.0 floor
   ['undici', v => v && (v.startsWith('4.') || v.startsWith('5.')), '6.24.0'],
-  // NOTE: no null fallback for undici — 8.x+ is already safe and must not be downgraded
 
   // ── async ──────────────────────────────────────────────
   ['async', v => v && semverLt(v,'3.2.6'), '3.2.6'],
 
-  // ══════════ NEW CVE fixes (April 2026) ══════════════════
-  ['next', v => v && semverLt(v,'16.1.7'), '16.1.7'],
-  ['lodash',    null, '4.18.0'],
-  ['lodash-es', null, '4.18.0'],
-  ['fast-xml-parser', null, '5.5.7'],
+  // ── full package set ════════════════════════════════════
+  ['next',                 v => v && semverLt(v,'16.1.7'), '16.1.7'],
+  ['lodash',               null, '4.18.0'],
+  ['lodash-es',            null, '4.18.0'],
+  ['fast-xml-parser',      null, '5.5.7'],
   ['serialize-javascript', null, '7.0.5'],
-  ['flatted', null, '3.4.2'],
-  // kysely: physical replacement by patch-all.js; version field sync
-  ['kysely', null, '0.28.14'],
-  // brace-expansion
+  ['flatted',              null, '3.4.2'],
+  ['kysely',               null, '0.28.8'],
+  ['nodemailer',           null, '8.0.5'],
+  ['effect',               v => v && semverLt(v,'3.20.0'), '3.20.0'],
+  ['defu',                 v => v && semverLt(v,'6.1.5'), '6.1.5'],
+  // brace-expansion: fix all major 1.x (1.1.11 -> 1.1.13)
+  ['brace-expansion', v => v && v.startsWith('1.'), '1.1.13'],
   ['brace-expansion', v => v && v.startsWith('2.'), '2.0.3'],
   ['brace-expansion', v => v && v.startsWith('5.'), '5.0.5'],
   ['brace-expansion', null, '5.0.5'],
@@ -75,18 +72,13 @@ const patches = [
   ['picomatch', null, '4.0.4'],
   // path-to-regexp
   ['path-to-regexp', v => v && v.startsWith('0.'), '0.1.13'],
+  ['path-to-regexp', v => v && v.startsWith('1.'), '1.9.0'],
+  ['path-to-regexp', v => v && v.startsWith('6.'), '6.3.0'],
   ['path-to-regexp', v => v && v.startsWith('8.'), '8.4.0'],
-  ['path-to-regexp', null, '8.4.0'],
   // yaml
   ['yaml', v => v && v.startsWith('1.'), '1.10.3'],
   ['yaml', v => v && v.startsWith('2.'), '2.8.3'],
   ['yaml', null, '2.8.3'],
-  // effect
-  ['effect', v => v && semverLt(v,'3.20.0'), '3.20.0'],
-  // defu
-  ['defu', v => v && semverLt(v,'6.1.5'), '6.1.5'],
-  // nodemailer
-  ['nodemailer', v => v && semverLt(v,'8.0.4'), '8.0.4'],
 ];
 
 function resolveTarget(name, version) {
@@ -109,10 +101,6 @@ function walkPkg(dir, results = []) {
   return results;
 }
 
-// Detect all node_modules roots:
-//  - Web (Next.js standalone): /app/node_modules
-//  - Worker (yarn workspace):  /app/worker/node_modules
-//  - npm global (fallback):    /usr/local/lib/node_modules/npm/node_modules
 const ROOTS_CANDIDATES = [
   '/app/node_modules',
   '/app/worker/node_modules',

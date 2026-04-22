@@ -9,7 +9,7 @@ const TARGETS = {
   'fast-xml-parser':          '5.5.7',
   'rollup':                   '4.59.0',
   'serialize-javascript':     '7.0.5',
-  'dompurify':                '3.3.2',
+  'dompurify':                '3.4.1',
   'ajv':                      '8.18.0',
   'webpack':                  '5.105.4',
   'qs':                       '6.14.2',
@@ -21,12 +21,13 @@ const TARGETS = {
   'lodash':                   '4.18.0',
   'lodash-es':                '4.18.0',
   'flatted':                  '3.4.2',
-  '@hono/node-server':        '1.19.10',
+  '@hono/node-server':        '1.19.14',
   '@smithy/config-resolver':  '4.4.6',
   'next':                     '16.1.7',
-  'nodemailer':               '8.0.4',
+  'nodemailer':               '8.0.5',
   'effect':                   '3.20.0',
   'defu':                     '6.1.5',
+  'langsmith':                '0.5.21',
 };
 
 // Packages replaced unconditionally (fork/patched builds — version equality does not mean same content)
@@ -47,7 +48,7 @@ const MULTI_MAJOR = {
   'undici': {
     4: '6.24.0', 5: '6.24.0', 6: '6.24.0', 7: '7.1.0',
   },
-  'brace-expansion': { 2: '2.0.3', 5: '5.0.5', default: '5.0.5' },
+  'brace-expansion': { 1: '1.1.13', 2: '2.0.3', 5: '5.0.5', default: '5.0.5' },
   'picomatch':       { 2: '2.3.2', 4: '4.0.4', default: '4.0.4' },
   // path-to-regexp: NO default — each major has its own safe version.
   // IMPORTANT: 6.x must stay at 6.x (Next.js 16 requires ^6, v8 breaks the API).
@@ -86,8 +87,6 @@ function sourceKey(name, ver) {
 }
 
 // walk: follow symlinks one level so pnpm virtual-store symlinks are visible.
-// We intentionally do NOT recurse into symlinked directories (cycle-safe: only
-// the direct symlink is followed, never a symlink found inside a resolved dir).
 function walk(dir, results, _depth) {
   results = results || [];
   _depth = _depth || 0;
@@ -97,7 +96,6 @@ function walk(dir, results, _depth) {
     var e = entries[i];
     var full = path.join(dir, e.name);
     if (e.isSymbolicLink()) {
-      // Follow symlink one level only (avoid infinite loops in pnpm virtual store)
       if (_depth > 0) continue;
       var real;
       try { real = fs.realpathSync(full); } catch (_) { continue; }
@@ -251,8 +249,6 @@ console.log('step2 done, dirs patched:', patched);
 console.log('step3: deferred to version-patch.js');
 
 // step4: rename pnpm store entries AND overwrite file contents with patched source.
-// BUG THAT WAS HERE: renaming the directory is not enough — the files inside still
-// contain the old (vulnerable) version. After rename we must cpDir from sources.
 if (fs.existsSync(PNPM_DIR)) {
   var pnpmEntries = fs.readdirSync(PNPM_DIR);
   var renamed = 0;
@@ -285,13 +281,9 @@ if (fs.existsSync(PNPM_DIR)) {
     }
     renamed++;
 
-    // KEY FIX: after rename, overwrite the actual package files with the patched
-    // source. Without this, the directory has the correct name but old file content.
     var patchKey = sourceKey(pkgName, curVer);
     var patchSrc = sources[patchKey] ? sources[patchKey].dir : null;
     if (patchSrc) {
-      // pnpm stores the package under node_modules/<pkgName> inside the entry dir,
-      // OR directly at the entry dir root for flat virtual stores.
       var innerDst = path.join(newPath, 'node_modules', pkgName);
       if (!fs.existsSync(innerDst)) innerDst = newPath;
       console.log('rename-pnpm: overwriting contents of', innerDst, 'with', patchSrc);
