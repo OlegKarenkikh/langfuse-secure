@@ -13,7 +13,7 @@ const TARGETS = {
   'ajv':                      '8.18.0',
   'webpack':                  '5.105.4',
   'qs':                       '6.14.2',
-  'axios':                    '1.13.5',
+  'axios':                '1.15.2',
   'cross-spawn':              '7.0.6',
   'basic-ftp':                '5.2.0',
   'vite':                     '7.0.8',

@@ -30,7 +30,7 @@ const patches = [
   ['vite',                 null, '7.0.8'],
   ['diff',                 null, '8.0.3'],
   ['tmp',                  null, '0.2.4'],
-  ['axios',                null, '1.13.5'],
+  ['axios',                null, '1.15.2'],
   ['rollup',               null, '4.59.0'],
   ['qs',                   null, '6.14.2'],
   ['cross-spawn',          null, '7.0.6'],
