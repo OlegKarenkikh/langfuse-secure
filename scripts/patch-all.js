@@ -1,4 +1,6 @@
 'use strict';
+// Paths containing these substrings are vendored/bundled - never patch them
+var SKIP_COMPILED_PATHS = ['/dist/compiled/', '/compiled/', '/.next/'];
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
@@ -198,7 +200,9 @@ var allPkgJsons = [];
 for (var r = 0; r < APP_NM_ROOTS.length; r++) allPkgJsons = allPkgJsons.concat(walk(APP_NM_ROOTS[r]));
 var sources = {};
 
+function isVendoredPath(p) { return SKIP_COMPILED_PATHS.some(function(s){ return p.includes(s); }); }
 function registerSource(pkgJsonPath) {
+  if (isVendoredPath(pkgJsonPath)) return;
   try {
     var pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
     var name = pkg.name, ver = pkg.version || '';
@@ -238,6 +242,7 @@ for (var i = 0; i < allPkgJsons.length; i++) {
       continue;
     }
     var dst = path.dirname(allPkgJsons[i]);
+    if (isVendoredPath(allPkgJsons[i])) continue;
     var src = sources[key].dir;
     if (dst === src) continue;
     console.log('patching', dst, ver, '->', sources[key].ver);
