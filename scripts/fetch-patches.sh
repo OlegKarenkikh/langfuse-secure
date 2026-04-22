@@ -24,57 +24,24 @@ fetch "yaml@1.10.3"
 fetch "yaml@2.8.3"
 fetch "defu@6.1.5"
 fetch "nodemailer@8.0.5"
+fetch "axios@1.15.2"
 fetch "@hono/node-server@1.19.14"
 fetch "dompurify@3.4.1"
 fetch "langsmith@0.5.21"
 
-# ── kysely: olegkarenkikh/kysely fork (protestware-free, same version 0.28.8) ──
-# The fork has version=0.28.8 identical to upstream, so standard version-based
-# patching would skip it. patch-all.js uses FORCE_REPLACE for unconditional copy.
-#
-# Build strategy:
-#   - Clone with --depth 1
-#   - npm install (installs TypeScript + other devDeps needed for tsc)
-#   - Run tsc directly (build:esm + build:cjs) to avoid prepublishOnly/test:exports
-#   - Copy built dist/ + package.json + helpers/ into patches dir
-#   - Entire block runs with set +e so a build failure is non-fatal (WARN only)
-echo ">>> kysely fork: github:olegkarenkikh/kysely"
-(
-  set +e
-  KYSELY_DIR="/tmp/kysely-fork-build"
-  rm -rf "$KYSELY_DIR"
-
-  git clone --depth 1 https://github.com/olegkarenkikh/kysely.git "$KYSELY_DIR"
-  if [ $? -ne 0 ]; then echo "WARN: kysely git clone failed"; exit 0; fi
-
-  cd "$KYSELY_DIR"
-  npm install --ignore-scripts
-  if [ $? -ne 0 ]; then echo "WARN: kysely npm install failed"; exit 0; fi
-
-  # Build ESM + CJS without triggering prepublishOnly / test:exports
-  npx tsc -p tsconfig.json
-  npx tsc -p tsconfig-cjs.json
-  # module-fixup renames .js -> .mjs in ESM output (optional, best-effort)
-  node scripts/module-fixup.js 2>/dev/null || true
-
-  if [ ! -d "dist" ]; then
-    echo "WARN: kysely dist/ not generated"
-    exit 0
-  fi
-
-  # Copy built package to patches dir
+# ── kysely: use prebuilt fork (protestware-free olegkarenkikh/kysely 0.28.8) ──
+# Pre-built outside Docker: dist/ already compiled, no git clone / npm install needed.
+echo ">>> kysely fork: prebuilt (olegkarenkikh/kysely, no protest-code)"
+KYSELY_SRC="/kysely-dist"
+if [ -d "$KYSELY_SRC/dist" ]; then
   mkdir -p "$PATCH_DIR/kysely"
-  cp -r dist       "$PATCH_DIR/kysely/dist"
-  cp    package.json "$PATCH_DIR/kysely/package.json"
-  cp -r helpers    "$PATCH_DIR/kysely/helpers" 2>/dev/null || true
-  cp    outdated-typescript.d.ts "$PATCH_DIR/kysely/" 2>/dev/null || true
-
-  echo "kysely fork built and staged:"
-  ls "$PATCH_DIR/kysely/dist/" | head -10
-
-  cd /tmp
-  rm -rf "$KYSELY_DIR"
-)
+  cp -r "$KYSELY_SRC/dist"         "$PATCH_DIR/kysely/dist"
+  cp    "$KYSELY_SRC/package.json" "$PATCH_DIR/kysely/package.json"
+  echo "kysely staged from prebuilt:"
+  ls "$PATCH_DIR/kysely/dist/" | head -4
+else
+  echo "WARN: /kysely-dist not found - kysely patching skipped"
+fi
 
 # ── Unpack all remaining tarballs ───────────────────────
 for tgz in *.tgz; do

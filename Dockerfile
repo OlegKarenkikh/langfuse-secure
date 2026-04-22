@@ -2,10 +2,12 @@
 # Stage 1: source — official langfuse:3 image
 FROM langfuse/langfuse:3 AS source
 
-# Stage 2: fetcher — downloads fixed npm packages + kysely fork
+# Stage 2: fetcher — downloads fixed npm packages; uses prebuilt kysely fork
 FROM node:22-slim AS fetcher
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /tmp/patches
+# kysely prebuilt dist (compiled outside Docker from olegkarenkikh/kysely fork)
+COPY kysely-dist /kysely-dist
 COPY scripts/fetch-patches.sh /tmp/fetch-patches.sh
 RUN chmod +x /tmp/fetch-patches.sh && bash /tmp/fetch-patches.sh
 
@@ -42,7 +44,7 @@ LABEL org.opencontainers.image.title="langfuse-secure" \
       org.opencontainers.image.licenses="MIT"
 WORKDIR /app
 COPY --from=patcher /app /app
-# Replace migrate binary with freshly compiled Go 1.26.2 binary (fixes CVE-2026-25679 etc.)
+# Replace migrate binary with freshly compiled Go 1.26.2 binary
 COPY --from=migrate-builder /go/bin/migrate /app/bin/migrate
 USER 65532
 ENV NODE_ENV=production

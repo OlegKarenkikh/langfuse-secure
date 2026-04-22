@@ -2,10 +2,11 @@
 # Stage 1: source — official langfuse-worker:3 image
 FROM langfuse/langfuse-worker:3 AS source
 
-# Stage 2: fetcher — downloads fixed npm packages + kysely fork
+# Stage 2: fetcher — downloads fixed npm packages; uses prebuilt kysely fork
 FROM node:22-slim AS fetcher
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /tmp/patches
+COPY kysely-dist /kysely-dist
 COPY scripts/fetch-patches.sh /tmp/fetch-patches.sh
 RUN chmod +x /tmp/fetch-patches.sh && bash /tmp/fetch-patches.sh
 
