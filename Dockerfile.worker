@@ -17,12 +17,14 @@ WORKDIR /app
 COPY scripts/patch-all.js /tmp/patch-all.js
 COPY scripts/version-patch.js /tmp/version-patch.js
 COPY scripts/fix-pnpm-symlinks.js /tmp/fix-pnpm-symlinks.js
+COPY scripts/download-prisma-engine.js /tmp/download-prisma-engine.js
 RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     --mount=type=bind,from=fetcher,source=/tmp/patches,target=/tmp/patches \
     cp -a /mnt/source/. /app && \
     node /tmp/patch-all.js && \
     node /tmp/version-patch.js && \
     node /tmp/fix-pnpm-symlinks.js && \
+    node /tmp/download-prisma-engine.js && \
     find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
     find /app -path "*/esbuild/bin/esbuild" -delete 2>/dev/null; \
     find /app -name "esbuild" -type f -perm /111 -delete 2>/dev/null; \
