@@ -21,6 +21,7 @@ USER root
 WORKDIR /app
 COPY scripts/patch-all.js /tmp/patch-all.js
 COPY scripts/download-prisma-engine.js /tmp/download-prisma-engine.js
+COPY scripts/fix-next-symlinks.js /tmp/fix-next-symlinks.js
 COPY scripts/version-patch.js /tmp/version-patch.js
 COPY scripts/brute-fix-ptr.js /tmp/brute-fix-ptr.js
 COPY scripts/diag.js /tmp/diag.js
@@ -31,6 +32,7 @@ RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     node /tmp/version-patch.js && \
     node /tmp/download-prisma-engine.js && \
     node /tmp/brute-fix-ptr.js && \
+    node /tmp/fix-next-symlinks.js && \
     node /tmp/diag.js && \
     find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
     find /app -path "*/esbuild/bin/esbuild" -delete 2>/dev/null; \
