@@ -61,12 +61,14 @@ services:
     environment:
       DATABASE_URL: postgresql://langfuse:langfuse_secret@postgres:5432/langfuse
       DIRECT_URL: postgresql://langfuse:langfuse_secret@postgres:5432/langfuse
-      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:8123/langfuse
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000/langfuse
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_USER: clickhouse
       CLICKHOUSE_PASSWORD: clickhouse_secret
+      CLICKHOUSE_DB: langfuse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
     entrypoint: ["dumb-init", "--", "./web/entrypoint.sh"]
-    command: ["sh", "-c", "echo 'Migrations done'; exit 0"]
+    command: ["sh", "-c", "echo Migrations done"]
     restart: "no"
 
   web:
@@ -87,10 +89,12 @@ services:
     environment:
       DATABASE_URL: postgresql://langfuse:langfuse_secret@postgres:5432/langfuse
       DIRECT_URL: postgresql://langfuse:langfuse_secret@postgres:5432/langfuse
-      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:8123/langfuse
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000/langfuse
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_USER: clickhouse
       CLICKHOUSE_PASSWORD: clickhouse_secret
+      CLICKHOUSE_DB: langfuse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       NEXTAUTH_URL: http://localhost:3000
@@ -138,10 +142,12 @@ services:
     environment:
       DATABASE_URL: postgresql://langfuse:langfuse_secret@postgres:5432/langfuse
       DIRECT_URL: postgresql://langfuse:langfuse_secret@postgres:5432/langfuse
-      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:8123/langfuse
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000/langfuse
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_USER: clickhouse
       CLICKHOUSE_PASSWORD: clickhouse_secret
+      CLICKHOUSE_DB: langfuse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       SALT: super_secret_salt_key_32_chars!!!
