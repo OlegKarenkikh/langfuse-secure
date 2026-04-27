@@ -25,6 +25,7 @@ COPY scripts/fix-next-symlinks.js /tmp/fix-next-symlinks.js
 COPY scripts/version-patch.js /tmp/version-patch.js
 COPY scripts/brute-fix-ptr.js /tmp/brute-fix-ptr.js
 COPY scripts/diag.js /tmp/diag.js
+COPY scripts/npm-bundle-patch.js /tmp/npm-bundle-patch.js
 RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     --mount=type=bind,from=fetcher,source=/tmp/patches,target=/tmp/patches \
     cp -a /mnt/source/. /app && \
@@ -33,6 +34,7 @@ RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     node /tmp/download-prisma-engine.js && \
     node /tmp/brute-fix-ptr.js && \
     node /tmp/fix-next-symlinks.js && \
+    node /tmp/npm-bundle-patch.js && \
     node /tmp/diag.js && \
     find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
     find /app -path "*/esbuild/bin/esbuild" -delete 2>/dev/null; \
@@ -50,6 +52,9 @@ WORKDIR /app
 COPY --from=patcher /app /app
 # Replace migrate binary with freshly compiled Go 1.26.2 binary
 COPY --from=migrate-builder /go/bin/migrate /app/bin/migrate
+USER root
+# Ensure utilities required by entrypoint and healthchecks are available
+RUN apk add --no-cache dumb-init wget curl bash
 USER 65532
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

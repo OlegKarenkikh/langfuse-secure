@@ -39,6 +39,9 @@ LABEL org.opencontainers.image.title="langfuse-worker-secure" \
       org.opencontainers.image.licenses="MIT"
 WORKDIR /app
 COPY --from=patcher /app /app
+USER root
+# Ensure utilities required by healthchecks are available
+RUN apk add --no-cache dumb-init wget curl bash
 USER 65532
 ENV NODE_ENV=production
 ENV PORT=3030
