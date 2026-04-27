@@ -26,6 +26,15 @@ const TARGET = {
   'effect':               '3.21.2',
   'defu':                 '6.1.7',
   'langsmith':            '0.5.25',
+  'micromatch':           '4.0.8',
+  'braces':               '3.0.3',
+  'nanoid':               '5.1.9',
+  'cookie':               '1.1.1',
+  'ip':                   '2.0.1',
+  'semver':               '7.7.4',
+  'ws':                   '8.20.0',
+  'express':              '5.2.1',
+  'body-parser':          '2.2.2',
 };
 
 const TARGET_V9 = { 'minimatch': '9.0.7' };
@@ -37,6 +46,14 @@ function resolveTarget(pkgName, currentVer) {
     if (currentVer && currentVer.startsWith('9.')) return TARGET_V9['minimatch'];
     return TARGET['minimatch'];
   }
+  // Special case for undici: don't downgrade 8.x
+  if (pkgName === 'undici' && currentVer && currentVer.startsWith('8.')) return '8.1.0';
+  if (pkgName === 'undici' && currentVer && currentVer.startsWith('7.')) return '7.25.0';
+  if (pkgName === 'undici' && currentVer && (currentVer.startsWith('4.') || currentVer.startsWith('5.') || currentVer.startsWith('6.'))) return '6.25.0';
+
+  // Special case for path-to-regexp: too many versions, and this script doesn't handle multi-major perfectly.
+  // We'll skip it here as brute-fix-ptr handles 0.1.x and patch-all handles others.
+
   return TARGET[pkgName] || null;
 }
 
