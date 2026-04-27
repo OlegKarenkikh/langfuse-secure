@@ -41,15 +41,17 @@ const patches = [
   ['langsmith',            null, '0.5.25'],
   ['micromatch',           null, '4.0.8'],
   ['braces',               null, '3.0.3'],
+  ['ejs',                  null, '3.1.10'],
+  ['follow-redirects',     null, '1.15.9'],
 
   // ── @smithy/config-resolver ────────────────────────────
   ['@smithy/config-resolver', v => !semverGte(v||'0','4.4.17'), '4.4.17'],
 
   // ── undici: explicit major ranges only ──
   ['undici', v => v && v.startsWith('8.') && semverLt(v,'8.1.0'), '8.1.0'],
-  ['undici', v => v && v.startsWith('7.') && semverLt(v,'7.1.0'), '7.1.0'],
-  ['undici', v => v && v.startsWith('6.') && semverLt(v,'6.24.0'), '6.24.0'],
-  ['undici', v => v && (v.startsWith('4.') || v.startsWith('5.')), '6.24.0'],
+  ['undici', v => v && v.startsWith('7.') && semverLt(v,'7.25.0'), '7.25.0'],
+  ['undici', v => v && v.startsWith('6.') && semverLt(v,'6.25.0'), '6.25.0'],
+  ['undici', v => v && (v.startsWith('4.') || v.startsWith('5.')), '6.25.0'],
 
   // ── async ──────────────────────────────────────────────
   ['async', v => v && semverLt(v,'3.2.6'), '3.2.6'],
@@ -77,6 +79,9 @@ const patches = [
   // path-to-regexp
   ['path-to-regexp', v => v && v.startsWith('0.'), '0.1.13'],
   ['path-to-regexp', v => v && v.startsWith('1.'), '1.9.0'],
+  ['path-to-regexp', v => v && v.startsWith('2.'), '2.4.0'],
+  ['path-to-regexp', v => v && v.startsWith('3.'), '3.3.0'],
+  ['path-to-regexp', v => v && v.startsWith('4.'), '4.0.5'],
   ['path-to-regexp', v => v && v.startsWith('6.'), '6.3.0'],
   ['path-to-regexp', v => v && v.startsWith('8.'), '8.4.2'],
   // yaml
@@ -139,6 +144,8 @@ const ROOTS_CANDIDATES = [
   '/app/node_modules',
   '/app/worker/node_modules',
   '/app/web/node_modules',
+  '/app/.next/standalone/node_modules',
+  '/app/web/.next/standalone/node_modules',
   '/usr/local/lib/node_modules/npm/node_modules',
 ];
 const roots = ROOTS_CANDIDATES.filter(r => fs.existsSync(r));

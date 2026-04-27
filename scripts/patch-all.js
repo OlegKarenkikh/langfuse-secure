@@ -1,6 +1,7 @@
 'use strict';
 // Paths containing these substrings are vendored/bundled - never patch them
-var SKIP_COMPILED_PATHS = ['/dist/compiled/', '/compiled/', '/.next/'];
+// We allow .next/standalone/node_modules because that's where the production dependencies are!
+var SKIP_COMPILED_PATHS = ['/dist/compiled/', '/compiled/'];
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
@@ -32,15 +33,16 @@ const TARGETS = {
   'langsmith':                '0.5.25',
   'micromatch':               '4.0.8',
   'braces':                   '3.0.3',
+  'ejs':                      '3.1.10',
+  'follow-redirects':         '1.15.9',
 };
 
-// Packages replaced unconditionally (fork/patched builds — version equality does not mean same content)
-// Key: package name, Value: directory name under /tmp/patches/
+// Packages replaced unconditionally (fork/patched builds)
 const FORCE_REPLACE = {
   'kysely': 'kysely',
 };
 
-// Multi-major: explicit majors only, no 'default' for undici (8.x+ untouched)
+// Multi-major: explicit majors only
 const MULTI_MAJOR = {
   'minimatch': {
     3: '9.0.7', 4: '9.0.7', 5: '9.0.7',
@@ -53,7 +55,6 @@ const MULTI_MAJOR = {
   },
   'brace-expansion': { 1: '1.1.13', 2: '2.0.3', 5: '5.0.5', default: '5.0.5' },
   'picomatch':       { 2: '2.3.2', 4: '4.0.4', default: '4.0.4' },
-  // path-to-regexp: NO default — each major has its own safe version.
   'path-to-regexp':  { 0: '0.1.13', 1: '1.9.0', 2: '2.4.0', 3: '3.3.0', 4: '4.0.5', 6: '6.3.0', 7: '8.4.2', 8: '8.4.2' },
   'yaml':            { 1: '1.10.3', 2: '2.8.3', default: '2.8.3' },
   'nanoid':          { 3: '3.3.11', 4: '4.0.2', 5: '5.1.9', default: '5.1.9' },
@@ -65,12 +66,14 @@ const MULTI_MAJOR = {
   'body-parser':     { 1: '1.20.5', 2: '2.2.2', default: '2.2.2' },
 };
 
-// Detect node_modules root: Web uses /app/node_modules (Next.js standalone),
-// Worker uses /app/worker/node_modules (yarn monorepo workspace)
+// Detect node_modules root including Next.js standalone paths
 const APP_NM_CANDIDATES = [
   '/app/node_modules',
   '/app/worker/node_modules',
   '/app/web/node_modules',
+  '/app/.next/standalone/node_modules',
+  '/app/web/.next/standalone/node_modules',
+  '/app/standalone/node_modules',
 ];
 const APP_NM_ROOTS = APP_NM_CANDIDATES.filter(p => fs.existsSync(p));
 
@@ -172,32 +175,6 @@ for (var fi = 0; fi < frNames.length; fi++) {
       } catch (_) {}
     }
   }
-  if (fs.existsSync(PNPM_DIR)) {
-    var pnpmEntries = fs.readdirSync(PNPM_DIR);
-    for (var pi = 0; pi < pnpmEntries.length; pi++) {
-      var entry = pnpmEntries[pi];
-      if (!entry.startsWith(frName + '@')) continue;
-      var entryPath = path.join(PNPM_DIR, entry);
-      var innerPkg = path.join(entryPath, 'node_modules', frName);
-      if (fs.existsSync(innerPkg)) {
-        console.log('  force-replacing pnpm store inner:', innerPkg);
-        cpDir(frPatchDir, innerPkg);
-        forceReplaced++;
-      } else {
-        var innerPkgJson = path.join(entryPath, 'package.json');
-        if (fs.existsSync(innerPkgJson)) {
-          try {
-            var ep = JSON.parse(fs.readFileSync(innerPkgJson, 'utf8'));
-            if (ep.name === frName) {
-              console.log('  force-replacing pnpm store flat:', entryPath);
-              cpDir(frPatchDir, entryPath);
-              forceReplaced++;
-            }
-          } catch (_) {}
-        }
-      }
-    }
-  }
 }
 console.log('step0 done, force-replaced:', forceReplaced);
 
@@ -259,9 +236,11 @@ console.log('step2 done, dirs patched:', patched);
 console.log('step3: deferred to version-patch.js');
 
 // step4: rename pnpm store entries AND overwrite file contents with patched source.
-if (fs.existsSync(PNPM_DIR)) {
-  var pnpmEntries = fs.readdirSync(PNPM_DIR);
-  var renamed = 0;
+APP_NM_ROOTS.forEach(function(root) {
+  var pnpmDir = path.join(root, '.pnpm');
+  if (!fs.existsSync(pnpmDir)) return;
+  console.log('step4: scanning pnpm store at', pnpmDir);
+  var pnpmEntries = fs.readdirSync(pnpmDir);
   for (var i = 0; i < pnpmEntries.length; i++) {
     var entry = pnpmEntries[i];
     var match = entry.match(/^(@[^+]+\+)?([^@]+)@([^_]+)(.*)$/);
@@ -274,22 +253,20 @@ if (fs.existsSync(PNPM_DIR)) {
     var target = resolveTarget(pkgName, curVer);
     if (!target) continue;
     if (semverGte(curVer, target)) continue;
-    if (pkgName === '@smithy/config-resolver' && semverGte(curVer, target)) continue;
 
-    var oldPath = path.join(PNPM_DIR, entry);
+    var oldPath = path.join(pnpmDir, entry);
     var newEntry = (scope || '') + pkgBase + '@' + target + suffix;
-    var newPath = path.join(PNPM_DIR, newEntry);
+    var newPath = path.join(pnpmDir, newEntry);
 
     if (fs.existsSync(newPath)) {
       console.log('rename-pnpm: target exists, removing old', entry);
       fs.rmSync(oldPath, { recursive: true, force: true });
     } else {
       console.log('rename-pnpm:', entry, '->', newEntry);
-      try { execSync('chmod 755 ' + JSON.stringify(PNPM_DIR)); } catch(_){}
+      try { execSync('chmod 755 ' + JSON.stringify(pnpmDir)); } catch(_){}
       cpDir(oldPath, newPath);
       fs.rmSync(oldPath, { recursive: true, force: true });
     }
-    renamed++;
 
     var patchKey = sourceKey(pkgName, curVer);
     var patchSrc = sources[patchKey] ? sources[patchKey].dir : null;
@@ -298,26 +275,8 @@ if (fs.existsSync(PNPM_DIR)) {
       if (!fs.existsSync(innerDst)) innerDst = newPath;
       console.log('rename-pnpm: overwriting contents of', innerDst, 'with', patchSrc);
       cpDir(patchSrc, innerDst);
-    } else {
-      console.log('rename-pnpm: WARN no patch source for', pkgName, curVer, '-> target', target);
     }
-
-    var symlinkPath = path.join(PRIMARY_NM, pkgName);
-    try {
-      var stat = fs.lstatSync(symlinkPath);
-      if (stat.isSymbolicLink()) {
-        var lnk = fs.readlinkSync(symlinkPath);
-        if (lnk.includes(entry)) {
-          fs.unlinkSync(symlinkPath);
-          fs.symlinkSync(lnk.replace(entry, newEntry), symlinkPath);
-          console.log('rename-pnpm: updated symlink', symlinkPath, '->', lnk.replace(entry, newEntry));
-        }
-      }
-    } catch(_){}
   }
-  console.log('step4 rename-pnpm done, renamed:', renamed);
-} else {
-  console.log('step4: no .pnpm dir (yarn/npm flat install), skipping rename-pnpm');
-}
+});
 
 console.log('patch-all DONE');

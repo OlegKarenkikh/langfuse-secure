@@ -52,6 +52,8 @@ fetch "body-parser@2.2.2"
 fetch "undici@6.25.0"
 fetch "undici@7.25.0"
 fetch "undici@8.1.0"
+fetch "ejs@3.1.10"
+fetch "follow-redirects@1.15.9"
 
 # ── kysely: use prebuilt fork (protestware-free olegkarenkikh/kysely 0.28.8) ──
 # Pre-built outside Docker: dist/ already compiled, no git clone / npm install needed.
