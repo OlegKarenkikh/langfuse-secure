@@ -6,30 +6,30 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const TARGETS = {
-  'tar':                      '7.5.11',
-  'glob':                     '10.5.0',
-  'fast-xml-parser':          '5.5.7',
-  'rollup':                   '4.59.0',
+  'tar':                      '7.5.13',
+  'glob':                     '13.0.6',
+  'fast-xml-parser':          '5.7.2',
+  'rollup':                   '4.60.2',
   'serialize-javascript':     '7.0.5',
   'dompurify':                '3.4.1',
-  'ajv':                      '8.18.0',
-  'webpack':                  '5.105.4',
-  'qs':                       '6.14.2',
-  'axios':                '1.15.2',
+  'ajv':                      '8.20.0',
+  'webpack':                  '5.106.2',
+  'qs':                       '6.15.1',
+  'axios':                    '1.15.2',
   'cross-spawn':              '7.0.6',
-  'basic-ftp':                '5.2.0',
-  'vite':                     '7.0.8',
-  'diff':                     '8.0.3',
-  'lodash':                   '4.18.0',
-  'lodash-es':                '4.18.0',
+  'basic-ftp':                '5.3.0',
+  'vite':                     '8.0.10',
+  'diff':                     '9.0.0',
+  'lodash':                   '4.18.1',
+  'lodash-es':                '4.18.1',
   'flatted':                  '3.4.2',
-  '@hono/node-server':        '1.19.14',
-  '@smithy/config-resolver':  '4.4.6',
-  'next':                     '16.1.7',
-  'nodemailer':               '8.0.5',
-  'effect':                   '3.20.0',
-  'defu':                     '6.1.5',
-  'langsmith':                '0.5.21',
+  '@hono/node-server':        '2.0.0',
+  '@smithy/config-resolver':  '4.4.17',
+  'next':                     '16.2.4',
+  'nodemailer':               '8.0.6',
+  'effect':                   '3.21.2',
+  'defu':                     '6.1.7',
+  'langsmith':                '0.5.25',
 };
 
 // Packages replaced unconditionally (fork/patched builds — version equality does not mean same content)
@@ -43,20 +43,20 @@ const MULTI_MAJOR = {
   'minimatch': {
     3: '9.0.7', 4: '9.0.7', 5: '9.0.7',
     6: '9.0.7', 7: '9.0.7', 8: '9.0.7',
-    9: '9.0.7', 10: '10.2.4',
+    9: '9.0.7', 10: '10.2.5',
     default: '9.0.7',
   },
   // undici: no 'default' — 8.x and above are already safe, must not be downgraded
   'undici': {
-    4: '6.24.0', 5: '6.24.0', 6: '6.24.0', 7: '7.1.0',
+    4: '6.24.0', 5: '6.24.0', 6: '6.24.0', 7: '7.1.0', 8: '8.1.0'
   },
   'brace-expansion': { 1: '1.1.13', 2: '2.0.3', 5: '5.0.5', default: '5.0.5' },
   'picomatch':       { 2: '2.3.2', 4: '4.0.4', default: '4.0.4' },
   // path-to-regexp: NO default — each major has its own safe version.
   // IMPORTANT: 6.x must stay at 6.x (Next.js 16 requires ^6, v8 breaks the API).
-  // 7.x is fully vulnerable → bump to 8.0.0 minimum (8.4.0 for ReDoS fix).
+  // 7.x is fully vulnerable → bump to 8.0.0 minimum (8.4.2 for ReDoS fix).
   // Do NOT add a 'default' key here — unknown majors must be left untouched.
-  'path-to-regexp':  { 0: '0.1.13', 1: '1.9.0', 3: '3.3.0', 6: '6.3.0', 7: '8.4.0', 8: '8.4.0' },
+  'path-to-regexp':  { 0: '0.1.13', 1: '1.9.0', 3: '3.3.0', 6: '6.3.0', 7: '8.4.2', 8: '8.4.2' },
   'yaml':            { 1: '1.10.3', 2: '2.8.3', default: '2.8.3' },
 };
 

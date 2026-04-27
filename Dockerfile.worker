@@ -11,7 +11,7 @@ COPY scripts/fetch-patches.sh /tmp/fetch-patches.sh
 RUN chmod +x /tmp/fetch-patches.sh && bash /tmp/fetch-patches.sh
 
 # Stage 3: patcher (Chainguard — zero OS CVE)
-FROM cgr.dev/chainguard/node:latest AS patcher
+FROM cgr.dev/chainguard/node:latest-dev AS patcher
 USER root
 WORKDIR /app
 COPY scripts/patch-all.js /tmp/patch-all.js
@@ -32,8 +32,8 @@ RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     find /app -path "*/monorepo-symlink-test*" -maxdepth 10 -type d -exec rm -rf {} + 2>/dev/null; \
     true
 
-# Stage 4: runtime — distroless Chainguard node
-FROM cgr.dev/chainguard/node:latest
+# Stage 4: runtime — Chainguard node with shell
+FROM cgr.dev/chainguard/node:latest-dev
 LABEL org.opencontainers.image.title="langfuse-worker-secure" \
       org.opencontainers.image.source="https://github.com/OlegKarenkikh/langfuse-secure" \
       org.opencontainers.image.licenses="MIT"

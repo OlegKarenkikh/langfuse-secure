@@ -14,35 +14,37 @@ function semverLt(a, b) { return !semverGte(a, b); }
 const patches = [
   // ── minimatch: all majors covered ─────────────────────────────
   ['minimatch', v => v && v.startsWith('9.'), '9.0.7'],
-  ['minimatch', v => v && v.startsWith('10.'), '10.2.4'],
+  ['minimatch', v => v && v.startsWith('10.'), '10.2.5'],
   ['minimatch', null, '9.0.7'],
 
   // ── tar / glob ─────────────────────────────────────────
-  ['tar',  null, '7.5.11'],
+  ['tar',  null, '7.5.13'],
   ['glob', v => v && v.startsWith('10.'), '10.5.0'],
   ['glob', v => v && v.startsWith('11.'), '11.1.0'],
-  ['glob', null, '10.5.0'],
+  ['glob', v => v && v.startsWith('13.'), '13.0.6'],
+  ['glob', null, '13.0.6'],
 
   // ── misc (single-target) ───────────────────────────────
   ['dompurify',            null, '3.4.1'],
-  ['ajv',                  null, '8.18.0'],
-  ['webpack',              null, '5.105.4'],
-  ['vite',                 null, '7.0.8'],
-  ['diff',                 null, '8.0.3'],
+  ['ajv',                  null, '8.20.0'],
+  ['webpack',              null, '5.106.2'],
+  ['vite',                 null, '8.0.10'],
+  ['diff',                 null, '9.0.0'],
   ['tmp',                  null, '0.2.4'],
   ['axios',                null, '1.15.2'],
-  ['rollup',               null, '4.59.0'],
-  ['qs',                   null, '6.14.2'],
+  ['rollup',               null, '4.60.2'],
+  ['qs',                   null, '6.15.1'],
   ['cross-spawn',          null, '7.0.6'],
-  ['basic-ftp',            null, '5.2.0'],
+  ['basic-ftp',            null, '5.3.0'],
   ['@tootallnate/once',    null, '3.0.1'],
-  ['@hono/node-server',    v => v && v.startsWith('1.'), '1.19.14'],
-  ['langsmith',            null, '0.5.21'],
+  ['@hono/node-server',    null, '2.0.0'],
+  ['langsmith',            null, '0.5.25'],
 
   // ── @smithy/config-resolver ────────────────────────────
-  ['@smithy/config-resolver', v => !semverGte(v||'0','4.4.6'), '4.4.6'],
+  ['@smithy/config-resolver', v => !semverGte(v||'0','4.4.17'), '4.4.17'],
 
   // ── undici: explicit major ranges only ──
+  ['undici', v => v && v.startsWith('8.') && semverLt(v,'8.1.0'), '8.1.0'],
   ['undici', v => v && v.startsWith('7.') && semverLt(v,'7.1.0'), '7.1.0'],
   ['undici', v => v && v.startsWith('6.') && semverLt(v,'6.24.0'), '6.24.0'],
   ['undici', v => v && (v.startsWith('4.') || v.startsWith('5.')), '6.24.0'],
@@ -51,16 +53,16 @@ const patches = [
   ['async', v => v && semverLt(v,'3.2.6'), '3.2.6'],
 
   // ── full package set ════════════════════════════════════
-  ['next',                 v => v && semverLt(v,'16.1.7'), '16.1.7'],
-  ['lodash',               null, '4.18.0'],
-  ['lodash-es',            null, '4.18.0'],
-  ['fast-xml-parser',      null, '5.5.7'],
+  ['next',                 v => v && semverLt(v,'16.2.4'), '16.2.4'],
+  ['lodash',               null, '4.18.1'],
+  ['lodash-es',            null, '4.18.1'],
+  ['fast-xml-parser',      null, '5.7.2'],
   ['serialize-javascript', null, '7.0.5'],
   ['flatted',              null, '3.4.2'],
   ['kysely',               null, '0.28.8'],
-  ['nodemailer',           null, '8.0.5'],
-  ['effect',               v => v && semverLt(v,'3.20.0'), '3.20.0'],
-  ['defu',                 v => v && semverLt(v,'6.1.5'), '6.1.5'],
+  ['nodemailer',           null, '8.0.6'],
+  ['effect',               v => v && semverLt(v,'3.21.2'), '3.21.2'],
+  ['defu',                 v => v && semverLt(v,'6.1.7'), '6.1.7'],
   // brace-expansion: fix all major 1.x (1.1.11 -> 1.1.13)
   ['brace-expansion', v => v && v.startsWith('1.'), '1.1.13'],
   ['brace-expansion', v => v && v.startsWith('2.'), '2.0.3'],
@@ -74,7 +76,7 @@ const patches = [
   ['path-to-regexp', v => v && v.startsWith('0.'), '0.1.13'],
   ['path-to-regexp', v => v && v.startsWith('1.'), '1.9.0'],
   ['path-to-regexp', v => v && v.startsWith('6.'), '6.3.0'],
-  ['path-to-regexp', v => v && v.startsWith('8.'), '8.4.0'],
+  ['path-to-regexp', v => v && v.startsWith('8.'), '8.4.2'],
   // yaml
   ['yaml', v => v && v.startsWith('1.'), '1.10.3'],
   ['yaml', v => v && v.startsWith('2.'), '2.8.3'],

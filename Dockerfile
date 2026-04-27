@@ -16,7 +16,7 @@ FROM golang:1.26.2-alpine AS migrate-builder
 RUN go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.1
 
 # Stage 4: patcher (Chainguard — zero OS CVE)
-FROM cgr.dev/chainguard/node:latest AS patcher
+FROM cgr.dev/chainguard/node:latest-dev AS patcher
 USER root
 WORKDIR /app
 COPY scripts/patch-all.js /tmp/patch-all.js
@@ -41,8 +41,8 @@ RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     find /app -path "*/monorepo-symlink-test*" -maxdepth 10 -type d -exec rm -rf {} + 2>/dev/null; \
     true
 
-# Stage 5: runtime — distroless Chainguard node
-FROM cgr.dev/chainguard/node:latest
+# Stage 5: runtime — Chainguard node with shell
+FROM cgr.dev/chainguard/node:latest-dev
 LABEL org.opencontainers.image.title="langfuse-secure" \
       org.opencontainers.image.source="https://github.com/OlegKarenkikh/langfuse-secure" \
       org.opencontainers.image.licenses="MIT"
