@@ -32,6 +32,26 @@ const TARGETS = {
   'braces':                   '3.0.3',
   'ejs':                      '5.0.2',
   'follow-redirects':         '1.16.0',
+  'nanoid':                   '5.1.9',
+  'cookie':                   '1.1.1',
+  'ip':                       '2.0.1',
+  'ws':                       '8.20.0',
+  'express':                  '5.2.1',
+  'body-parser':              '2.2.2',
+  'send':                     '0.19.2',
+  'serve-static':             '1.16.2',
+  'semver':                   '7.7.4',
+  'async':                    '3.2.6',
+  'nth-check':                '2.1.1',
+  'postcss':                  '8.5.12',
+  'negotiator':               '1.0.0',
+  'ipaddr.js':                '2.3.0',
+  'tough-cookie':             '5.1.0',
+  'json5':                    '2.2.3',
+  'cookie-signature':         '1.2.2',
+  'set-value':                '4.1.0',
+  'mixin-deep':               '2.0.1',
+  'got':                      '15.0.3',
 };
 
 const FORCE_REPLACE = {
@@ -40,17 +60,14 @@ const FORCE_REPLACE = {
 
 const MULTI_MAJOR = {
   'minimatch': {
-    3: '9.0.7', 4: '9.0.7', 5: '9.0.7',
-    6: '9.0.7', 7: '9.0.7', 8: '9.0.7',
-    9: '9.0.7', 10: '10.2.5',
-    default: '9.0.7',
+    3: '9.0.7', 4: '9.0.7', 5: '9.0.7', 6: '9.0.7', 7: '9.0.7', 8: '9.0.7', 9: '9.0.7', 10: '10.2.5', default: '9.0.7'
   },
   'undici': {
     4: '6.25.0', 5: '6.25.0', 6: '6.25.0', 7: '7.25.0', 8: '8.1.0'
   },
   'brace-expansion': { 1: '1.1.13', 2: '2.0.3', 5: '5.0.5', default: '5.0.5' },
   'picomatch':       { 2: '2.3.2', 3: '3.0.2', 4: '4.0.4', default: '4.0.4' },
-  'path-to-regexp':  { 0: '0.1.13', 1: '1.9.0', 2: '2.4.0', 3: '3.3.0', 4: '4.0.5', 5: '5.0.0', 6: '6.3.0', 7: '8.4.2', 8: '8.4.2' },
+  'path-to-regexp':  { 0: '0.1.13', 1: '1.9.0', 2: '2.4.0', 3: '3.3.0', 4: '4.0.5', 5: '5.0.0', 6: '6.3.0', 7: '7.2.0', 8: '8.4.2', default: '8.4.2' },
   'yaml':            { 1: '1.10.3', 2: '2.8.3', default: '2.8.3' },
   'nanoid':          { 3: '3.3.11', 4: '4.0.2', 5: '5.1.9', default: '5.1.9' },
   'cookie':          { 0: '0.7.2', 1: '1.1.1', default: '1.1.1' },
@@ -59,9 +76,18 @@ const MULTI_MAJOR = {
   'ws':              { 7: '7.5.10', 8: '8.20.0', default: '8.20.0' },
   'express':         { 4: '4.22.1', 5: '5.2.1', default: '5.2.1' },
   'body-parser':     { 1: '1.20.5', 2: '2.2.2', default: '2.2.2' },
-  'send':            { 0: '0.19.2', default: '0.19.2' },
-  'serve-static':    { 1: '1.16.2', default: '1.16.2' },
-  'fast-xml-parser': { 3: '3.21.1', 4: '4.5.6', default: '5.7.2' },
+  'fast-xml-parser': { 3: '3.21.1', 4: '4.5.6', 5: '5.7.2', default: '5.7.2' },
+  'axios':           { 0: '0.31.1', 1: '1.15.2', default: '1.15.2' },
+  'postcss':         { 7: '7.0.39', 8: '8.5.12', default: '8.5.12' },
+  'braces':          { 2: '2.3.2', 3: '3.0.3', default: '3.0.3' },
+  'micromatch':      { 3: '3.1.10', 4: '4.0.8', default: '4.0.8' },
+  'async':           { 2: '2.6.4', 3: '3.2.6', default: '3.2.6' },
+  'nth-check':       { 1: '1.0.2', 2: '2.1.1', default: '2.1.1' },
+  'ajv':             { 6: '6.12.6', 8: '8.20.0', default: '8.20.0' },
+  'tar':             { 4: '4.4.19', 6: '6.2.1', 7: '7.5.13', default: '7.5.13' },
+  'glob':            { 7: '7.2.3', 8: '8.1.0', 9: '9.3.5', 10: '10.4.5', 11: '11.1.0', 13: '13.0.6', default: '13.0.6' },
+  'ejs':             { 3: '3.1.10', 5: '5.0.2', default: '5.0.2' },
+  'tough-cookie':    { 4: '4.1.4', 5: '5.1.0', default: '5.1.0' },
 };
 
 let APP_NM_ROOTS = [];
@@ -241,7 +267,7 @@ APP_NM_ROOTS.forEach(function(root) {
 
     APP_NM_ROOTS.forEach(function(r) {
       try {
-        const links = execSync('find ' + JSON.stringify(r) + ' -maxdepth 3 -type l 2>/dev/null').toString().split('\n');
+        const links = execSync('find ' + JSON.stringify(r) + ' -maxdepth 5 -type l 2>/dev/null').toString().split('\n');
         links.forEach(function(lnkPath) {
           if (!lnkPath) return;
           try {
