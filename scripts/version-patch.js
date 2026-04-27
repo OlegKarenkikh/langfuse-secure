@@ -74,6 +74,7 @@ const patches = [
   ['brace-expansion', null, '5.0.5'],
   // picomatch
   ['picomatch', v => v && v.startsWith('2.'), '2.3.2'],
+  ['picomatch', v => v && v.startsWith('3.'), '3.0.2'],
   ['picomatch', v => v && v.startsWith('4.'), '4.0.4'],
   ['picomatch', null, '4.0.4'],
   // path-to-regexp
@@ -82,6 +83,7 @@ const patches = [
   ['path-to-regexp', v => v && v.startsWith('2.'), '2.4.0'],
   ['path-to-regexp', v => v && v.startsWith('3.'), '3.3.0'],
   ['path-to-regexp', v => v && v.startsWith('4.'), '4.0.5'],
+  ['path-to-regexp', v => v && v.startsWith('5.'), '5.0.0'],
   ['path-to-regexp', v => v && v.startsWith('6.'), '6.3.0'],
   ['path-to-regexp', v => v && v.startsWith('8.'), '8.4.2'],
   // yaml
@@ -118,6 +120,12 @@ const patches = [
   ['body-parser', v => v && v.startsWith('1.'), '1.20.5'],
   ['body-parser', v => v && v.startsWith('2.'), '2.2.2'],
   ['body-parser', null, '2.2.2'],
+  // send
+  ['send', v => v && v.startsWith('0.'), '0.19.2'],
+  ['send', null, '0.19.2'],
+  // serve-static
+  ['serve-static', v => v && v.startsWith('1.'), '1.16.2'],
+  ['serve-static', null, '1.16.2'],
 ];
 
 function resolveTarget(name, version) {
@@ -144,11 +152,22 @@ const ROOTS_CANDIDATES = [
   '/app/node_modules',
   '/app/worker/node_modules',
   '/app/web/node_modules',
-  '/app/.next/standalone/node_modules',
-  '/app/web/.next/standalone/node_modules',
   '/usr/local/lib/node_modules/npm/node_modules',
 ];
-const roots = ROOTS_CANDIDATES.filter(r => fs.existsSync(r));
+
+// Aggressive discovery of roots
+let roots = [];
+const { execSync } = require('child_process');
+try {
+  const findOut = execSync('find /app -name node_modules -type d 2>/dev/null').toString().trim();
+  roots = findOut.split('\n').filter(Boolean);
+} catch (e) {
+  roots = ROOTS_CANDIDATES.filter(r => fs.existsSync(r));
+}
+if (!roots.includes('/usr/local/lib/node_modules/npm/node_modules') && fs.existsSync('/usr/local/lib/node_modules/npm/node_modules')) {
+  roots.push('/usr/local/lib/node_modules/npm/node_modules');
+}
+
 console.log('version-patch roots:', roots);
 
 let all = [];

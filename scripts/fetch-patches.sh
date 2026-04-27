@@ -13,12 +13,14 @@ fetch "brace-expansion@1.1.13"
 fetch "brace-expansion@2.0.3"
 fetch "brace-expansion@5.0.5"
 fetch "picomatch@2.3.2"
+fetch "picomatch@3.0.2"
 fetch "picomatch@4.0.4"
 fetch "path-to-regexp@0.1.13"
 fetch "path-to-regexp@1.9.0"
 fetch "path-to-regexp@2.4.0"
 fetch "path-to-regexp@3.3.0"
 fetch "path-to-regexp@4.0.5"
+fetch "path-to-regexp@5.0.0"
 fetch "path-to-regexp@6.3.0"
 fetch "path-to-regexp@8.4.2"
 fetch "next@16.2.4"
@@ -54,17 +56,17 @@ fetch "undici@7.25.0"
 fetch "undici@8.1.0"
 fetch "ejs@3.1.10"
 fetch "follow-redirects@1.15.9"
+fetch "send@0.19.2"
+fetch "serve-static@1.16.2"
 
 # ── kysely: use prebuilt fork (protestware-free olegkarenkikh/kysely 0.28.8) ──
-# Pre-built outside Docker: dist/ already compiled, no git clone / npm install needed.
 echo ">>> kysely fork: prebuilt (olegkarenkikh/kysely, no protest-code)"
 KYSELY_SRC="/kysely-dist"
 if [ -d "$KYSELY_SRC/dist" ]; then
   mkdir -p "$PATCH_DIR/kysely"
   cp -r "$KYSELY_SRC/dist"         "$PATCH_DIR/kysely/dist"
   cp    "$KYSELY_SRC/package.json" "$PATCH_DIR/kysely/package.json"
-  echo "kysely staged from prebuilt:"
-  ls "$PATCH_DIR/kysely/dist/" | head -4
+  echo "kysely staged from prebuilt"
 else
   echo "WARN: /kysely-dist not found - kysely patching skipped"
 fi

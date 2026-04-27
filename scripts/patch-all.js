@@ -1,6 +1,4 @@
 'use strict';
-// Paths containing these substrings are vendored/bundled - never patch them
-// We allow .next/standalone/node_modules because that's where the production dependencies are!
 var SKIP_COMPILED_PATHS = ['/dist/compiled/', '/compiled/'];
 const fs = require('fs');
 const path = require('path');
@@ -37,12 +35,10 @@ const TARGETS = {
   'follow-redirects':         '1.15.9',
 };
 
-// Packages replaced unconditionally (fork/patched builds)
 const FORCE_REPLACE = {
   'kysely': 'kysely',
 };
 
-// Multi-major: explicit majors only
 const MULTI_MAJOR = {
   'minimatch': {
     3: '9.0.7', 4: '9.0.7', 5: '9.0.7',
@@ -54,8 +50,8 @@ const MULTI_MAJOR = {
     4: '6.25.0', 5: '6.25.0', 6: '6.25.0', 7: '7.25.0', 8: '8.1.0'
   },
   'brace-expansion': { 1: '1.1.13', 2: '2.0.3', 5: '5.0.5', default: '5.0.5' },
-  'picomatch':       { 2: '2.3.2', 4: '4.0.4', default: '4.0.4' },
-  'path-to-regexp':  { 0: '0.1.13', 1: '1.9.0', 2: '2.4.0', 3: '3.3.0', 4: '4.0.5', 6: '6.3.0', 7: '8.4.2', 8: '8.4.2' },
+  'picomatch':       { 2: '2.3.2', 3: '4.0.4', 4: '4.0.4', default: '4.0.4' },
+  'path-to-regexp':  { 0: '0.1.13', 1: '1.9.0', 2: '2.4.0', 3: '3.3.0', 4: '4.0.5', 5: '6.3.0', 6: '6.3.0', 7: '8.4.2', 8: '8.4.2' },
   'yaml':            { 1: '1.10.3', 2: '2.8.3', default: '2.8.3' },
   'nanoid':          { 3: '3.3.11', 4: '4.0.2', 5: '5.1.9', default: '5.1.9' },
   'cookie':          { 0: '0.7.2', 1: '1.1.1', default: '1.1.1' },
@@ -64,22 +60,20 @@ const MULTI_MAJOR = {
   'ws':              { 7: '7.5.10', 8: '8.20.0', default: '8.20.0' },
   'express':         { 4: '4.22.1', 5: '5.2.1', default: '5.2.1' },
   'body-parser':     { 1: '1.20.5', 2: '2.2.2', default: '2.2.2' },
+  'send':            { 0: '0.19.2', default: '0.19.2' },
+  'serve-static':    { 1: '1.16.2', default: '1.16.2' },
 };
 
-// Detect node_modules root including Next.js standalone paths
-const APP_NM_CANDIDATES = [
-  '/app/node_modules',
-  '/app/worker/node_modules',
-  '/app/web/node_modules',
-  '/app/.next/standalone/node_modules',
-  '/app/web/.next/standalone/node_modules',
-  '/app/standalone/node_modules',
-];
-const APP_NM_ROOTS = APP_NM_CANDIDATES.filter(p => fs.existsSync(p));
+// Aggressive discovery of node_modules
+let APP_NM_ROOTS = [];
+try {
+  const findOut = execSync('find /app -name node_modules -type d 2>/dev/null').toString().trim();
+  APP_NM_ROOTS = findOut.split('\n').filter(Boolean);
+} catch (e) {
+  APP_NM_ROOTS = ['/app/node_modules'];
+}
+console.log('Detected node_modules roots:', APP_NM_ROOTS);
 
-// Primary root for pnpm store (only relevant for Web)
-const PRIMARY_NM = APP_NM_ROOTS[0] || '/app/node_modules';
-const PNPM_DIR = path.join(PRIMARY_NM, '.pnpm');
 const PATCHES_DIR = '/tmp/patches';
 
 function resolveTarget(name, ver) {
@@ -96,7 +90,6 @@ function sourceKey(name, ver) {
   return name + '@target-' + (resolveTarget(name, ver) || 'unknown');
 }
 
-// walk: follow symlinks one level so pnpm virtual-store symlinks are visible.
 function walk(dir, results, _depth) {
   results = results || [];
   _depth = _depth || 0;
@@ -145,22 +138,17 @@ function cpDir(src, dst) {
 
 function isTracked(name) { return !!TARGETS[name] || !!MULTI_MAJOR[name]; }
 
-console.log('APP_NM roots detected:', APP_NM_ROOTS);
 for (var r = 0; r < APP_NM_ROOTS.length; r++) {
-  try { execSync('chmod -R 755 ' + JSON.stringify(APP_NM_ROOTS[r]), { stdio: 'inherit' }); } catch (e) { console.log('chmod warn:', e.message); }
+  try { execSync('chmod -R 755 ' + JSON.stringify(APP_NM_ROOTS[r])); } catch (e) {}
 }
 
-// ── Step 0: FORCE_REPLACE — unconditional fork replacements ──────────────────
-console.log('step0: force-replace (fork packages)...');
+console.log('step0: force-replace...');
 var forceReplaced = 0;
 var frNames = Object.keys(FORCE_REPLACE);
 for (var fi = 0; fi < frNames.length; fi++) {
   var frName = frNames[fi];
   var frPatchDir = path.join(PATCHES_DIR, FORCE_REPLACE[frName]);
-  if (!fs.existsSync(frPatchDir)) {
-    console.log('  WARN: patch dir not found for', frName, '->', frPatchDir);
-    continue;
-  }
+  if (!fs.existsSync(frPatchDir)) continue;
   for (var r = 0; r < APP_NM_ROOTS.length; r++) {
     var pkgJsons = walk(APP_NM_ROOTS[r]);
     for (var pi = 0; pi < pkgJsons.length; pi++) {
@@ -168,15 +156,12 @@ for (var fi = 0; fi < frNames.length; fi++) {
         var pkg = JSON.parse(fs.readFileSync(pkgJsons[pi], 'utf8'));
         if (pkg.name !== frName) continue;
         var dst = path.dirname(pkgJsons[pi]);
-        if (dst === frPatchDir) continue;
-        console.log('  force-replacing', dst, '(v' + pkg.version + ') <- fork', frPatchDir);
         cpDir(frPatchDir, dst);
         forceReplaced++;
       } catch (_) {}
     }
   }
 }
-console.log('step0 done, force-replaced:', forceReplaced);
 
 var allPkgJsons = [];
 for (var r = 0; r < APP_NM_ROOTS.length; r++) allPkgJsons = allPkgJsons.concat(walk(APP_NM_ROOTS[r]));
@@ -199,71 +184,50 @@ function registerSource(pkgJsonPath) {
 }
 
 for (var i = 0; i < allPkgJsons.length; i++) registerSource(allPkgJsons[i]);
-
 if (fs.existsSync(PATCHES_DIR)) {
   var extPkgs = walk(PATCHES_DIR);
   for (var i = 0; i < extPkgs.length; i++) registerSource(extPkgs[i]);
 }
 
-console.log('Sources found:');
-var sk = Object.keys(sources);
-for (var i = 0; i < sk.length; i++) console.log(' ', sk[i], sources[sk[i]].ver, '->', sources[sk[i]].dir);
-
-var patched = 0;
+console.log('step2: patching...');
 for (var i = 0; i < allPkgJsons.length; i++) {
   try {
     var pkg = JSON.parse(fs.readFileSync(allPkgJsons[i], 'utf8'));
     var name = pkg.name, ver = pkg.version || '';
     if (!name || !isTracked(name)) continue;
     var target = resolveTarget(name, ver);
-    if (!target) continue;
-    if (semverGte(ver, target)) continue;
+    if (!target || semverGte(ver, target)) continue;
     var key = sourceKey(name, ver);
-    if (!sources[key]) {
-      console.log('no-source (version-patch will handle):', name, ver, '->', target);
-      continue;
-    }
+    if (!sources[key]) continue;
     var dst = path.dirname(allPkgJsons[i]);
     if (isVendoredPath(allPkgJsons[i])) continue;
     var src = sources[key].dir;
     if (dst === src) continue;
-    console.log('patching', dst, ver, '->', sources[key].ver);
     cpDir(src, dst);
-    patched++;
-  } catch (e) { console.log('patch error', e.message); }
+  } catch (e) {}
 }
-console.log('step2 done, dirs patched:', patched);
-console.log('step3: deferred to version-patch.js');
 
-// step4: rename pnpm store entries AND overwrite file contents with patched source.
+console.log('step4: pnpm store renaming and symlink updates...');
 APP_NM_ROOTS.forEach(function(root) {
   var pnpmDir = path.join(root, '.pnpm');
   if (!fs.existsSync(pnpmDir)) return;
-  console.log('step4: scanning pnpm store at', pnpmDir);
   var pnpmEntries = fs.readdirSync(pnpmDir);
   for (var i = 0; i < pnpmEntries.length; i++) {
     var entry = pnpmEntries[i];
     var match = entry.match(/^(@[^+]+\+)?([^@]+)@([^_]+)(.*)$/);
     if (!match) continue;
     var scope = match[1] || '', pkgBase = match[2], curVer = match[3], suffix = match[4] || '';
-    var pkgName = scope
-      ? '@' + scope.replace(/^@/,'').replace(/\+$/,'').replace(/\+/,'/') + '/' + pkgBase
-      : pkgBase;
-
+    var pkgName = scope ? '@' + scope.replace(/^@/,'').replace(/\+$/,'').replace(/\+/,'/') + '/' + pkgBase : pkgBase;
     var target = resolveTarget(pkgName, curVer);
-    if (!target) continue;
-    if (semverGte(curVer, target)) continue;
+    if (!target || semverGte(curVer, target)) continue;
 
     var oldPath = path.join(pnpmDir, entry);
     var newEntry = (scope || '') + pkgBase + '@' + target + suffix;
     var newPath = path.join(pnpmDir, newEntry);
 
     if (fs.existsSync(newPath)) {
-      console.log('rename-pnpm: target exists, removing old', entry);
       fs.rmSync(oldPath, { recursive: true, force: true });
     } else {
-      console.log('rename-pnpm:', entry, '->', newEntry);
-      try { execSync('chmod 755 ' + JSON.stringify(pnpmDir)); } catch(_){}
       cpDir(oldPath, newPath);
       fs.rmSync(oldPath, { recursive: true, force: true });
     }
@@ -273,9 +237,26 @@ APP_NM_ROOTS.forEach(function(root) {
     if (patchSrc) {
       var innerDst = path.join(newPath, 'node_modules', pkgName);
       if (!fs.existsSync(innerDst)) innerDst = newPath;
-      console.log('rename-pnpm: overwriting contents of', innerDst, 'with', patchSrc);
       cpDir(patchSrc, innerDst);
     }
+
+    // Comprehensive symlink update in ALL node_modules roots
+    APP_NM_ROOTS.forEach(function(r) {
+      try {
+        const links = execSync('find ' + JSON.stringify(r) + ' -maxdepth 3 -type l 2>/dev/null').toString().split('\n');
+        links.forEach(function(lnkPath) {
+          if (!lnkPath) return;
+          try {
+            var lnk = fs.readlinkSync(lnkPath);
+            if (lnk.includes(entry)) {
+              var newLnk = lnk.replace(entry, newEntry);
+              fs.unlinkSync(lnkPath);
+              fs.symlinkSync(newLnk, lnkPath);
+            }
+          } catch (_) {}
+        });
+      } catch (_) {}
+    });
   }
 });
 
