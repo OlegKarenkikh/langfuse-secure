@@ -7,7 +7,6 @@ const { execSync } = require('child_process');
 const TARGETS = {
   'tar':                      '7.5.13',
   'glob':                     '13.0.6',
-  'fast-xml-parser':          '5.7.2',
   'rollup':                   '4.60.2',
   'serialize-javascript':     '7.0.5',
   'dompurify':                '3.4.1',
@@ -31,8 +30,8 @@ const TARGETS = {
   'langsmith':                '0.5.25',
   'micromatch':               '4.0.8',
   'braces':                   '3.0.3',
-  'ejs':                      '3.1.10',
-  'follow-redirects':         '1.15.9',
+  'ejs':                      '5.0.2',
+  'follow-redirects':         '1.16.0',
 };
 
 const FORCE_REPLACE = {
@@ -50,8 +49,8 @@ const MULTI_MAJOR = {
     4: '6.25.0', 5: '6.25.0', 6: '6.25.0', 7: '7.25.0', 8: '8.1.0'
   },
   'brace-expansion': { 1: '1.1.13', 2: '2.0.3', 5: '5.0.5', default: '5.0.5' },
-  'picomatch':       { 2: '2.3.2', 3: '4.0.4', 4: '4.0.4', default: '4.0.4' },
-  'path-to-regexp':  { 0: '0.1.13', 1: '1.9.0', 2: '2.4.0', 3: '3.3.0', 4: '4.0.5', 5: '6.3.0', 6: '6.3.0', 7: '8.4.2', 8: '8.4.2' },
+  'picomatch':       { 2: '2.3.2', 3: '3.0.2', 4: '4.0.4', default: '4.0.4' },
+  'path-to-regexp':  { 0: '0.1.13', 1: '1.9.0', 2: '2.4.0', 3: '3.3.0', 4: '4.0.5', 5: '5.0.0', 6: '6.3.0', 7: '8.4.2', 8: '8.4.2' },
   'yaml':            { 1: '1.10.3', 2: '2.8.3', default: '2.8.3' },
   'nanoid':          { 3: '3.3.11', 4: '4.0.2', 5: '5.1.9', default: '5.1.9' },
   'cookie':          { 0: '0.7.2', 1: '1.1.1', default: '1.1.1' },
@@ -62,9 +61,9 @@ const MULTI_MAJOR = {
   'body-parser':     { 1: '1.20.5', 2: '2.2.2', default: '2.2.2' },
   'send':            { 0: '0.19.2', default: '0.19.2' },
   'serve-static':    { 1: '1.16.2', default: '1.16.2' },
+  'fast-xml-parser': { 3: '3.21.1', 4: '4.5.6', default: '5.7.2' },
 };
 
-// Aggressive discovery of node_modules
 let APP_NM_ROOTS = [];
 try {
   const findOut = execSync('find /app -name node_modules -type d 2>/dev/null').toString().trim();
@@ -240,7 +239,6 @@ APP_NM_ROOTS.forEach(function(root) {
       cpDir(patchSrc, innerDst);
     }
 
-    // Comprehensive symlink update in ALL node_modules roots
     APP_NM_ROOTS.forEach(function(r) {
       try {
         const links = execSync('find ' + JSON.stringify(r) + ' -maxdepth 3 -type l 2>/dev/null').toString().split('\n');
