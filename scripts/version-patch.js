@@ -39,6 +39,8 @@ const patches = [
   ['@tootallnate/once',    null, '3.0.1'],
   ['@hono/node-server',    null, '2.0.0'],
   ['langsmith',            null, '0.5.25'],
+  ['micromatch',           null, '4.0.8'],
+  ['braces',               null, '3.0.3'],
 
   // ── @smithy/config-resolver ────────────────────────────
   ['@smithy/config-resolver', v => !semverGte(v||'0','4.4.17'), '4.4.17'],
@@ -81,6 +83,36 @@ const patches = [
   ['yaml', v => v && v.startsWith('1.'), '1.10.3'],
   ['yaml', v => v && v.startsWith('2.'), '2.8.3'],
   ['yaml', null, '2.8.3'],
+  // nanoid
+  ['nanoid', v => v && v.startsWith('3.'), '3.3.11'],
+  ['nanoid', v => v && v.startsWith('4.'), '4.0.2'],
+  ['nanoid', v => v && v.startsWith('5.'), '5.1.9'],
+  ['nanoid', null, '5.1.9'],
+  // cookie
+  ['cookie', v => v && v.startsWith('0.'), '0.7.2'],
+  ['cookie', v => v && v.startsWith('1.'), '1.1.1'],
+  ['cookie', null, '1.1.1'],
+  // ip
+  ['ip', v => v && v.startsWith('1.'), '1.1.9'],
+  ['ip', v => v && v.startsWith('2.'), '2.0.1'],
+  ['ip', null, '2.0.1'],
+  // semver
+  ['semver', v => v && v.startsWith('5.'), '5.7.2'],
+  ['semver', v => v && v.startsWith('6.'), '6.3.1'],
+  ['semver', v => v && v.startsWith('7.'), '7.7.4'],
+  ['semver', null, '7.7.4'],
+  // ws
+  ['ws', v => v && v.startsWith('7.'), '7.5.10'],
+  ['ws', v => v && v.startsWith('8.'), '8.20.0'],
+  ['ws', null, '8.20.0'],
+  // express
+  ['express', v => v && v.startsWith('4.'), '4.22.1'],
+  ['express', v => v && v.startsWith('5.'), '5.2.1'],
+  ['express', null, '5.2.1'],
+  // body-parser
+  ['body-parser', v => v && v.startsWith('1.'), '1.20.5'],
+  ['body-parser', v => v && v.startsWith('2.'), '2.2.2'],
+  ['body-parser', null, '2.2.2'],
 ];
 
 function resolveTarget(name, version) {

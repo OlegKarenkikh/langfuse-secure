@@ -30,6 +30,8 @@ const TARGETS = {
   'effect':                   '3.21.2',
   'defu':                     '6.1.7',
   'langsmith':                '0.5.25',
+  'micromatch':               '4.0.8',
+  'braces':                   '3.0.3',
 };
 
 // Packages replaced unconditionally (fork/patched builds — version equality does not mean same content)
@@ -58,6 +60,13 @@ const MULTI_MAJOR = {
   // Do NOT add a 'default' key here — unknown majors must be left untouched.
   'path-to-regexp':  { 0: '0.1.13', 1: '1.9.0', 3: '3.3.0', 6: '6.3.0', 7: '8.4.2', 8: '8.4.2' },
   'yaml':            { 1: '1.10.3', 2: '2.8.3', default: '2.8.3' },
+  'nanoid':          { 3: '3.3.11', 4: '4.0.2', 5: '5.1.9', default: '5.1.9' },
+  'cookie':          { 0: '0.7.2', 1: '1.1.1', default: '1.1.1' },
+  'ip':              { 1: '1.1.9', 2: '2.0.1', default: '2.0.1' },
+  'semver':          { 5: '5.7.2', 6: '6.3.1', 7: '7.7.4', default: '7.7.4' },
+  'ws':              { 7: '7.5.10', 8: '8.20.0', default: '8.20.0' },
+  'express':         { 4: '4.22.1', 5: '5.2.1', default: '5.2.1' },
+  'body-parser':     { 1: '1.20.5', 2: '2.2.2', default: '2.2.2' },
 };
 
 // Detect node_modules root: Web uses /app/node_modules (Next.js standalone),
