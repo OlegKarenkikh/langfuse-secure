@@ -62,5 +62,7 @@ ENV DOCKER_BUILD=0
 ENV NEXT_MANUAL_SIG_HANDLE=true
 ENV PORT=3000
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD wget -qO- http://localhost:3000/api/public/health || exit 1
 ENTRYPOINT ["dumb-init", "--", "/bin/sh", "/app/web/entrypoint.sh"]
 CMD ["/bin/sh", "-c", "node ./web/server.js --keepAliveTimeout 110000"]
