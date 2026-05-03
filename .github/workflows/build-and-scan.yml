@@ -424,7 +424,7 @@ jobs:
     name: Push -> Docker Hub
     runs-on: ubuntu-latest
     needs: [integration-test]
-    # Enable push for all branches to fulfill the absolute zero vulnerability requirement and verify deployment
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.event_name == 'schedule')
     permissions:
       contents: read
 

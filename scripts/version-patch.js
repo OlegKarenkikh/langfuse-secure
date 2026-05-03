@@ -144,6 +144,12 @@ const patches = [
   ['nth-check', v => v && v.startsWith('1.'), '1.0.2'],
   ['nth-check', v => v && v.startsWith('2.'), '2.1.1'],
   ['nth-check', null, '3.0.1'],
+  ['uuid', v => v && v.startsWith('3.'), '3.4.0'],
+  ['uuid', v => v && v.startsWith('7.'), '7.0.3'],
+  ['uuid', v => v && v.startsWith('8.'), '8.3.2'],
+  ['uuid', v => v && v.startsWith('9.'), '9.0.1'],
+  ['uuid', v => v && v.startsWith('10.'), '10.0.0'],
+  ['uuid', null, '11.1.0'],
 ];
 
 function resolveTarget(name, version) {
