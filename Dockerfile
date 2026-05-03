@@ -16,7 +16,7 @@ FROM golang:1.26.2-alpine AS migrate-builder
 RUN go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.1
 
 # Stage 4: patcher (Chainguard — zero OS CVE)
-FROM cgr.dev/chainguard/node:latest AS patcher
+FROM cgr.dev/chainguard/node:latest-dev AS patcher
 USER root
 WORKDIR /app
 COPY scripts/patch-all.js /tmp/patch-all.js
@@ -25,6 +25,7 @@ COPY scripts/fix-next-symlinks.js /tmp/fix-next-symlinks.js
 COPY scripts/version-patch.js /tmp/version-patch.js
 COPY scripts/brute-fix-ptr.js /tmp/brute-fix-ptr.js
 COPY scripts/diag.js /tmp/diag.js
+COPY scripts/npm-bundle-patch.js /tmp/npm-bundle-patch.js
 RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     --mount=type=bind,from=fetcher,source=/tmp/patches,target=/tmp/patches \
     cp -a /mnt/source/. /app && \
@@ -33,6 +34,7 @@ RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     node /tmp/download-prisma-engine.js && \
     node /tmp/brute-fix-ptr.js && \
     node /tmp/fix-next-symlinks.js && \
+    node /tmp/npm-bundle-patch.js && \
     node /tmp/diag.js && \
     find /app -path "*/@esbuild/linux-x64/bin/esbuild" -delete 2>/dev/null; \
     find /app -path "*/esbuild/bin/esbuild" -delete 2>/dev/null; \
@@ -41,8 +43,8 @@ RUN --mount=type=bind,from=source,source=/app,target=/mnt/source \
     find /app -path "*/monorepo-symlink-test*" -maxdepth 10 -type d -exec rm -rf {} + 2>/dev/null; \
     true
 
-# Stage 5: runtime — distroless Chainguard node
-FROM cgr.dev/chainguard/node:latest
+# Stage 5: runtime — Chainguard node with shell
+FROM cgr.dev/chainguard/node:latest-dev
 LABEL org.opencontainers.image.title="langfuse-secure" \
       org.opencontainers.image.source="https://github.com/OlegKarenkikh/langfuse-secure" \
       org.opencontainers.image.licenses="MIT"
@@ -50,6 +52,9 @@ WORKDIR /app
 COPY --from=patcher /app /app
 # Replace migrate binary with freshly compiled Go 1.26.2 binary
 COPY --from=migrate-builder /go/bin/migrate /app/bin/migrate
+USER root
+# Ensure utilities required by entrypoint and healthchecks are available
+RUN apk add --no-cache dumb-init wget curl bash
 USER 65532
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -57,5 +62,7 @@ ENV DOCKER_BUILD=0
 ENV NEXT_MANUAL_SIG_HANDLE=true
 ENV PORT=3000
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD wget -qO- http://localhost:3000/api/public/health || exit 1
 ENTRYPOINT ["dumb-init", "--", "/bin/sh", "/app/web/entrypoint.sh"]
 CMD ["/bin/sh", "-c", "node ./web/server.js --keepAliveTimeout 110000"]

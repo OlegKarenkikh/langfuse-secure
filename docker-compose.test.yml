@@ -72,7 +72,7 @@ services:
     restart: "no"
 
   web:
-    image: olegkarenkikh/langfuse-secure:web-latest
+    image: ${IMAGE_WEB:-olegkarenkikh/langfuse-secure:latest}
     depends_on:
       postgres:
         condition: service_healthy
@@ -127,7 +127,7 @@ services:
       start_period: 60s
 
   worker:
-    image: olegkarenkikh/langfuse-secure:worker-latest
+    image: ${IMAGE_WORKER:-olegkarenkikh/langfuse-secure:worker-latest}
     depends_on:
       postgres:
         condition: service_healthy

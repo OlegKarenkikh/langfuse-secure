@@ -3,24 +3,38 @@ const fs = require('fs');
 const path = require('path');
 
 const TARGET = {
-  'tar':                  '7.5.11',
-  'glob':                 '10.5.0',
-  'minimatch':            '10.2.4',
-  'dompurify':            '3.3.2',
-  'ajv':                  '8.18.0',
-  'webpack':              '5.105.4',
-  'vite':                 '7.0.8',
-  'undici':               '6.23.0',
-  'diff':                 '8.0.3',
-  'lodash-es':            '4.17.23',
-  'fast-xml-parser':      '5.3.8',
-  'axios':                '1.13.5',
-  'rollup':               '4.59.0',
-  'serialize-javascript': '7.0.3',
-  'qs':                   '6.14.2',
-  'brace-expansion':      '2.0.2',
+  'tar':                  '7.5.13',
+  'glob':                 '13.0.6',
+  'minimatch':            '10.2.5',
+  'dompurify':            '3.4.1',
+  'ajv':                  '8.20.0',
+  'webpack':              '5.106.2',
+  'vite':                 '8.0.10',
+  'undici':               '8.1.0',
+  'diff':                 '9.0.0',
+  'lodash-es':            '4.18.1',
+  'fast-xml-parser':      '5.7.2',
+  'axios':                '1.15.2',
+  'rollup':               '4.60.2',
+  'serialize-javascript': '7.0.5',
+  'qs':                   '6.15.1',
+  'brace-expansion':      '5.0.5',
   'cross-spawn':          '7.0.6',
-  'basic-ftp':            '5.2.0',
+  'basic-ftp':            '5.3.0',
+  'next':                 '16.2.4',
+  'nodemailer':           '8.0.6',
+  'effect':               '3.21.2',
+  'defu':                 '6.1.7',
+  'langsmith':            '0.5.25',
+  'micromatch':           '4.0.8',
+  'braces':               '3.0.3',
+  'nanoid':               '5.1.9',
+  'cookie':               '1.1.1',
+  'ip':                   '2.0.1',
+  'semver':               '7.7.4',
+  'ws':                   '8.20.0',
+  'express':              '5.2.1',
+  'body-parser':          '2.2.2',
 };
 
 const TARGET_V9 = { 'minimatch': '9.0.7' };
@@ -32,6 +46,14 @@ function resolveTarget(pkgName, currentVer) {
     if (currentVer && currentVer.startsWith('9.')) return TARGET_V9['minimatch'];
     return TARGET['minimatch'];
   }
+  // Special case for undici: don't downgrade 8.x
+  if (pkgName === 'undici' && currentVer && currentVer.startsWith('8.')) return '8.1.0';
+  if (pkgName === 'undici' && currentVer && currentVer.startsWith('7.')) return '7.25.0';
+  if (pkgName === 'undici' && currentVer && (currentVer.startsWith('4.') || currentVer.startsWith('5.') || currentVer.startsWith('6.'))) return '6.25.0';
+
+  // Special case for path-to-regexp: too many versions, and this script doesn't handle multi-major perfectly.
+  // We'll skip it here as brute-fix-ptr handles 0.1.x and patch-all handles others.
+
   return TARGET[pkgName] || null;
 }
 

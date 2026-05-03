@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const TAR_TARGET = '7.5.11';
+const TAR_TARGET = '7.5.13';
 
 const roots = [
   '/usr/local/lib/node_modules/npm/node_modules',
